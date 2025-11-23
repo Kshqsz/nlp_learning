@@ -1,0 +1,47 @@
+# Python 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+
+# Python 编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# macOS 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 缩略图
+._*
+
+# IDE 配置文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyTorch 模型文件
+*.pth
+*.pt
+*.ckpt
+
+# 数据文件
+*.csv
+*.json
+*.pkl
+*.pickle
+
+# 日志文件
+*.log
+
+# 临时文件
+*.tmp
+.cache/

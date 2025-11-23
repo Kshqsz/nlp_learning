@@ -33,26 +33,6 @@ nlp_learning/
 - 通过 `nn.Embedding` 层学习词的向量表示
 - 词向量维度：8 维
 
-**训练数据**：
-
-```python
-
-sentences = [
-
-"i love cats", 
-
-"i love dogs", 
-
-"you love animals",
-
-"dogs are cute", 
-
-"cats are cute"
-
-]
-
-```
-
 **模型结构**：
 
 - Embedding 层：将词 ID 映射到 8 维向量
@@ -63,18 +43,6 @@ sentences = [
 - 训练 1000 轮后，计算 "cats" 和 "dogs" 的余弦相似度
 - 验证语义相近的词在向量空间中距离更近
 
-**运行方式**：
-
-```bash
-
-cdsimple_demo
-
-pythonminimal_word_embedding_train.py
-
-```
-
----
-
 ### 2. 简单情感分类器 (`simple_sentiment_classifier.py`)
 
 **功能**：实现基于词向量平均的文本情感分类
@@ -83,33 +51,6 @@ pythonminimal_word_embedding_train.py
 
 - Mean Pooling：对句子中所有词向量求平均，得到句子表示
 - 二分类任务：正面情感 vs 负面情感
-
-**训练数据**：
-
-```python
-
-# 正面样本
-
-"i love this movie"
-
-"this is amazing"
-
-"i really like this film"
-
-"the story is great"
-
-
-# 负面样本
-
-"i hate this movie"
-
-"this is bad"
-
-"i really dislike this film"
-
-"the story is terrible"
-
-```
 
 **模型结构**：
 
@@ -135,16 +76,6 @@ SimpleSentimentNet:
 
 - 训练 300 轮
 - 测试句子 "i love this" 的情感预测
-
-**运行方式**：
-
-```bash
-
-cdsimple_demo
-
-pythonsimple_sentiment_classifier.py
-
-```
 
 ## 💡 学习要点
 

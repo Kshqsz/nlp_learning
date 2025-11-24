@@ -13,11 +13,13 @@ nlp_learning/
 
 └── simple_demo/
 
-    ├── minimal_word_embedding_train.py    # 词向量训练
+    ├── minimal_word_embedding_train.py         # 词向量训练
 
-    ├── simple_sentiment_classifier.py     # 情感分类器
+    ├── simple_sentiment_classifier.py          # 情感分类器
 
-    └── rnn_text_classifier.py             # RNN 文本分类
+    ├── rnn_text_classifier.py                  # RNN 文本分类
+
+    └── transformer_sentiment_classification.py # Transformer 情感分类
 
 ```
 
@@ -128,6 +130,64 @@ python rnn_text_classifier.py
 
 ```
 
+---
+
+### 4. Transformer 情感分类器 (`transformer_sentiment_classification.py`)
+
+**功能**：使用 Transformer 编码器进行文本情感分类
+
+**核心概念**：
+
+- Self-Attention：自注意力机制，捕获词之间的全局关系
+- Position Encoding：位置编码，为模型提供序列位置信息
+- Residual Connection：残差连接，帮助深层网络训练
+- Layer Normalization：层归一化，稳定训练过程
+
+**模型结构**：
+
+```
+
+MiniTransformerEncoder:
+
+  - Embedding 层 + 位置编码 (vocab_size → 8)
+
+  - Self-Attention 层 (Q, K, V 变换)
+
+  - LayerNorm + 残差连接
+
+  - FeedForward 层 (8 → 16 → 8)
+
+  - LayerNorm + 残差连接
+
+  - 分类层 (8 → 2)
+
+  - 输出：正面 / 负面
+
+```
+
+**关键技术**：
+
+- **Self-Attention**：$\text{Attention}(Q, K, V) = \text{softmax}(\frac{QK^T}{\sqrt{d_k}})V$
+- **位置编码**：使用可学习的位置参数，而非固定的 sin/cos 编码
+- **残差连接**：$\text{output} = \text{LayerNorm}(x + \text{SubLayer}(x))$
+- **CLS Token**：使用第一个位置的输出作为句子表示
+
+**演示效果**：
+
+- 训练 50 轮，快速收敛
+- 可视化注意力权重矩阵，理解模型关注的词
+- 对测试句子进行情感预测
+
+**运行方式**：
+
+```bash
+
+cd simple_demo
+
+python transformer_sentiment_classification.py
+
+```
+
 ## 💡 学习要点
 
 ### 词向量 (Word Embedding)
@@ -149,6 +209,14 @@ python rnn_text_classifier.py
 - 使用隐藏状态作为句子表示
 - 相比平均池化，能更好地理解语序
 
+### Transformer 架构
+
+- Self-Attention 机制捕获全局依赖关系
+- 并行计算，训练速度快于 RNN
+- 位置编码提供序列顺序信息
+- 残差连接和层归一化稳定训练
+- 注意力权重可视化，模型可解释性强
+
 ## 🛠️ 依赖环境
 
 - Python 3.x
@@ -163,12 +231,15 @@ python rnn_text_classifier.py
 
 3. **RNN 文本分类** → 理解如何用循环神经网络处理序列数据
 
+4. **Transformer 情感分类** → 理解 Self-Attention 和 Transformer 架构
+
 ## 📚 后续计划
 
 - [x] RNN 文本分类
+- [x] Transformer 模型
 - [ ] LSTM 序列标注
-- [ ] Attention 机制
-- [ ] Transformer 模型
+- [ ] 注意力机制可视化
+- [ ] 预训练模型微调 (BERT)
 
 ---
 

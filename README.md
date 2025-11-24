@@ -11,15 +11,21 @@ nlp_learning/
 
 ├── README.md
 
-└── simple_demo/
+├── simple_demo/                                # 从零实现的基础 demo
 
-    ├── minimal_word_embedding_train.py         # 词向量训练
+│   ├── minimal_word_embedding_train.py         # 词向量训练
 
-    ├── simple_sentiment_classifier.py          # 情感分类器
+│   ├── simple_sentiment_classifier.py          # 情感分类器
 
-    ├── rnn_text_classifier.py                  # RNN 文本分类
+│   ├── rnn_text_classifier.py                  # RNN 文本分类
 
-    └── transformer_sentiment_classification.py # Transformer 情感分类
+│   └── transformer_sentiment_classification.py # Transformer 情感分类
+
+└── huggingface_demo/                           # Hugging Face 预训练模型应用
+
+    ├── sentiment_analysis_demo.py              # 英文情感分析
+
+    └── sentiment_pipeline_chinese.py           # 中文情感分析
 
 ```
 
@@ -188,6 +194,110 @@ python transformer_sentiment_classification.py
 
 ```
 
+---
+
+## 🤗 huggingface_demo
+
+使用 Hugging Face Transformers 库，快速应用预训练模型。
+
+### 1. 英文情感分析 (`sentiment_analysis_demo.py`)
+
+**功能**：使用 Hugging Face 预训练模型进行英文情感分析
+
+**核心概念**：
+
+- Pipeline API：Hugging Face 提供的高层封装，一行代码实现推理
+- 预训练模型：使用已经在大规模数据上训练好的模型
+- 零配置：自动下载模型和分词器
+
+**示例代码**：
+
+```python
+
+from transformers import pipeline
+
+
+clf = pipeline("sentiment-analysis")
+
+result = clf("this movie is very boring!")
+
+print(result)  # [{'label': 'NEGATIVE', 'score': 0.9998}]
+
+```
+
+**运行方式**：
+
+```bash
+
+cd huggingface_demo
+
+python sentiment_analysis_demo.py
+
+```
+
+---
+
+### 2. 中文情感分析 (`sentiment_pipeline_chinese.py`)
+
+**功能**：使用中文预训练模型进行情感分析
+
+**核心概念**：
+
+- 指定模型：使用针对中文训练的模型
+- RoBERTa 模型：基于 BERT 改进的预训练模型
+- 在京东评论数据上微调：适用于中文电商评论场景
+
+**示例代码**：
+
+```python
+
+from transformers import pipeline
+
+
+clf = pipeline(
+
+    "sentiment-analysis",
+
+    model="uer/roberta-base-finetuned-jd-binary-chinese"
+
+)
+
+
+texts = [
+
+    "这个电影真的太好看了，我特别喜欢！",
+
+    "这个手机太卡了，我非常失望。"
+
+]
+
+
+for t in texts:
+
+    result = clf(t)
+
+    print(t, "=>", result)
+
+```
+
+**运行方式**：
+
+```bash
+
+cd huggingface_demo
+
+python sentiment_pipeline_chinese.py
+
+```
+
+**优势**：
+
+- 无需手动准备训练数据
+- 效果远超从零训练的小模型
+- 支持多语言和多种 NLP 任务
+
+---
+
 ## 💡 学习要点
 
 ### 词向量 (Word Embedding)
@@ -217,29 +327,58 @@ python transformer_sentiment_classification.py
 - 残差连接和层归一化稳定训练
 - 注意力权重可视化，模型可解释性强
 
+### 预训练模型应用
+
+- Hugging Face 生态：丰富的预训练模型库
+- Pipeline API：简化模型调用流程
+- 迁移学习：利用大模型的知识
+- 快速原型开发：无需从零训练
+- 多语言支持：轻松处理中文等非英语任务
+
 ## 🛠️ 依赖环境
 
 - Python 3.x
 - PyTorch
-- torch
+- transformers (Hugging Face)
 
-## 📝 学习路径
+**安装命令**：
+
+```bash
+
+pip install torch transformers
+
+```
+
+## 📍 学习路径
+
+### 阶段一：基础概念（simple_demo）
 
 1. **词向量训练** → 理解如何将词转换为向量
-
 2. **简单情感分类** → 理解如何使用词向量进行文本分类
-
 3. **RNN 文本分类** → 理解如何用循环神经网络处理序列数据
-
 4. **Transformer 情感分类** → 理解 Self-Attention 和 Transformer 架构
+
+### 阶段二：工业应用（huggingface_demo）
+
+5. **Hugging Face 入门** → 学习使用预训练模型
+6. **多语言应用** → 掌握中文 NLP 任务处理
 
 ## 📚 后续计划
 
+**已完成**：
+- [x] 词向量训练
+- [x] 简单情感分类
 - [x] RNN 文本分类
 - [x] Transformer 模型
+- [x] Hugging Face 预训练模型应用
+- [x] 中文 NLP 任务
+
+**进行中 / 计划中**：
 - [ ] LSTM 序列标注
 - [ ] 注意力机制可视化
-- [ ] 预训练模型微调 (BERT)
+- [ ] 预训练模型微调 (Fine-tuning)
+- [ ] 命名实体识别 (NER)
+- [ ] 文本生成任务
 
 ---
 

@@ -15,13 +15,15 @@ nlp_learning/
 
     ├── minimal_word_embedding_train.py    # 词向量训练
 
-    └── simple_sentiment_classifier.py     # 情感分类器
+    ├── simple_sentiment_classifier.py     # 情感分类器
+
+    └── rnn_text_classifier.py             # RNN 文本分类
 
 ```
 
 ## 🚀 simple_demo
 
-包含两个最基础的 NLP 概念演示，使用 PyTorch 从零实现。
+包含 NLP 基础概念演示，使用 PyTorch 从零实现。
 
 ### 1. 极简词向量训练 (`minimal_word_embedding_train.py`)
 
@@ -77,6 +79,55 @@ SimpleSentimentNet:
 - 训练 300 轮
 - 测试句子 "i love this" 的情感预测
 
+---
+
+### 3. RNN 文本分类器 (`rnn_text_classifier.py`)
+
+**功能**：使用循环神经网络 (RNN) 进行文本情感分类
+
+**核心概念**：
+
+- RNN：处理序列数据，捕获词序信息
+- Padding：将不同长度的句子填充到相同长度
+- 使用最后一个隐藏状态进行分类
+
+**模型结构**：
+
+```
+
+SimpleRNNClassifier:
+
+  - Embedding 层 (vocab_size → 8, padding_idx=0)
+
+  - RNN 层 (8 → 16, batch_first=True)
+
+  - 全连接层 (16 → 2)
+
+  - 输出：正面 / 负面
+
+```
+
+**关键技术**：
+
+- **序列填充 (Padding)**：统一句子长度为 6，不足部分用 `<PAD>` 填充
+- **Hidden State**：使用 RNN 最后的隐藏状态作为句子表示
+- **批量训练**：一次处理所有样本，提升训练效率
+
+**演示效果**：
+
+- 训练 300 轮，Loss 从 0.69 降至 0.0001
+- 对测试句子进行情感预测
+
+**运行方式**：
+
+```bash
+
+cd simple_demo
+
+python rnn_text_classifier.py
+
+```
+
 ## 💡 学习要点
 
 ### 词向量 (Word Embedding)
@@ -91,6 +142,13 @@ SimpleSentimentNet:
 - 简单但有效的 baseline 方法
 - 理解 NLP 任务的基本流程
 
+### RNN 序列建模
+
+- 捕获词序信息，理解上下文
+- 序列填充 (Padding) 处理变长输入
+- 使用隐藏状态作为句子表示
+- 相比平均池化，能更好地理解语序
+
 ## 🛠️ 依赖环境
 
 - Python 3.x
@@ -99,13 +157,15 @@ SimpleSentimentNet:
 
 ## 📝 学习路径
 
-1.**词向量训练** → 理解如何将词转换为向量
+1. **词向量训练** → 理解如何将词转换为向量
 
-2.**情感分类** → 理解如何使用词向量进行文本分类
+2. **简单情感分类** → 理解如何使用词向量进行文本分类
+
+3. **RNN 文本分类** → 理解如何用循环神经网络处理序列数据
 
 ## 📚 后续计划
 
-- [ ] RNN 文本分类
+- [x] RNN 文本分类
 - [ ] LSTM 序列标注
 - [ ] Attention 机制
 - [ ] Transformer 模型

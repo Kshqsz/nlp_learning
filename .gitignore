@@ -33,6 +33,12 @@ __pycache__/
 *.pt
 *.ckpt
 
+# Hugging Face 模型文件夹
+my_bert_model/
+**/my_bert_model/
+results/
+**/results/
+
 # 数据文件
 *.csv
 *.json

@@ -18,8 +18,10 @@ nlp_learning/
 │   └── sentiment_pipeline_chinese.py           # 中文情感分析
 ├── sentiment_classifier/                       # BERT 二分类微调
 │   └── bert_finetune_sentiment.py              # 中文情感分类（ChnSentiCorp）
-└── news_classifier/                            # BERT 多分类微调
-    └── bert_news_multiclass.py                 # 中文新闻分类（CLUE tnews 15分类）
+├── news_classifier/                            # BERT 多分类微调
+│   └── bert_news_multiclass.py                 # 中文新闻分类（CLUE tnews 15分类）
+└── pretraining_toy/                            # 预训练实验
+    └── pretrain_chinese.py                     # 中文继续预训练（Qwen 0.5B）
 ```
 
 ## 🚀 simple_demo
@@ -399,6 +401,66 @@ python bert_news_multiclass.py
 
 ---
 
+## 🧪 pretraining_toy
+
+预训练实验模块，学习如何对大语言模型进行继续预训练 (Continued Pretraining)。
+
+### 中文继续预训练 (`pretrain_chinese.py`)
+
+**功能**：在中文维基百科数据上对 Qwen 模型进行继续预训练
+
+**核心概念**：
+
+- **Causal Language Model (CLM)**：因果语言模型，只能看到左边的 token，预测下一个 token
+- **继续预训练**：在已有预训练模型基础上，使用新语料继续训练
+- **下一个 Token 预测**：给定 `"今天天气"` → 预测 `"很好"`
+
+**技术细节**：
+
+| 配置项 | 值 |
+|--------|-----|
+| 基座模型 | Qwen/Qwen1.5-0.5B |
+| 参数量 | 500M |
+| 数据集 | pleisto/wikipedia-cn-20230720-filtered |
+| 训练样本 | 3000 条（演示用）|
+| 最大长度 | 512 tokens |
+| Batch Size | 1 |
+| Learning Rate | 2e-5 |
+| 混合精度 | BFloat16 |
+
+**关键技术**：
+
+- **DataCollatorForLanguageModeling**：自动创建训练标签（input_ids 右移一位）
+- **return_overflowing_tokens**：长文本自动切分为多个训练样本
+- **bf16 混合精度**：节省显存，训练更稳定
+
+**模型架构**：
+
+```
+Qwen1.5-0.5B (Causal LM):
+  - Embedding 层
+  - 24 层 Transformer Decoder
+  - 每层: Self-Attention + FFN
+  - LM Head: 预测下一个 token
+```
+
+**运行方式**：
+
+```bash
+cd pretraining_toy
+python pretrain_chinese.py
+```
+
+**训练输出示例**：
+
+```
+🚀 Starting Chinese continued pretraining...
+{'loss': 2.345, 'learning_rate': 2e-05, 'epoch': 0.5}
+✅ 中文预训练模型已保存到 ./qwen_pretrained
+```
+
+---
+
 ## 💡 学习要点
 
 ### 词向量 (Word Embedding)
@@ -444,6 +506,13 @@ python bert_news_multiclass.py
 - 使用 Hugging Face Trainer 简化训练流程
 - 模型缓存机制：避免重复训练
 
+### 继续预训练 (Continued Pretraining)
+
+- 在已有模型基础上，使用领域语料继续训练
+- 因果语言模型 (Causal LM)：预测下一个 token
+- 适用场景：领域适配、知识注入
+- 混合精度训练：bf16 节省显存
+
 ## 🛠️ 依赖环境
 
 - Python 3.x
@@ -479,6 +548,10 @@ pip install torch transformers datasets evaluate accelerate
 8. **BERT 二分类微调** → 学习在情感分类任务上微调 BERT
 9. **BERT 多分类微调** → 学习在新闻分类任务上微调 BERT
 
+### 阶段四：预训练实验（pretraining_toy）
+
+10. **中文继续预训练** → 学习如何对 LLM 进行继续预训练
+
 ## 📚 后续计划
 
 **已完成**：
@@ -491,6 +564,7 @@ pip install torch transformers datasets evaluate accelerate
 - [X] 中文 NLP 任务
 - [X] BERT 情感分类微调（二分类）
 - [X] BERT 新闻分类微调（多分类 15 类）
+- [X] LLM 继续预训练（Qwen 0.5B + 中文维基）
 
 **进行中 / 计划中**：
 
@@ -498,7 +572,8 @@ pip install torch transformers datasets evaluate accelerate
 - [ ] 注意力机制深入可视化
 - [ ] 命名实体识别 (NER)
 - [ ] 文本生成任务
-- [ ] 大语言模型 (LLM) 应用
+- [ ] 指令微调 (Instruction Tuning)
+- [ ] LoRA / QLoRA 高效微调
 
 ---
 

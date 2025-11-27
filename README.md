@@ -1,32 +1,25 @@
-
 # NLP Learning
 
-这是一个用于学习自然语言处理 (NLP) 基础概念和实现的仓库，包含从零开始的简单 demo 代码。
+这是一个用于学习自然语言处理 (NLP) 基础概念和实现的仓库，包含从零开始的简单 demo 代码，以及使用预训练模型进行微调的实战项目。
 
 ## 📁 项目结构
 
 ```
-
 nlp_learning/
-
 ├── README.md
-
 ├── simple_demo/                                # 从零实现的基础 demo
-
 │   ├── minimal_word_embedding_train.py         # 词向量训练
-
 │   ├── simple_sentiment_classifier.py          # 情感分类器
-
 │   ├── rnn_text_classifier.py                  # RNN 文本分类
-
-│   └── transformer_sentiment_classification.py # Transformer 情感分类
-
-└── huggingface_demo/                           # Hugging Face 预训练模型应用
-
-    ├── sentiment_analysis_demo.py              # 英文情感分析
-
-    └── sentiment_pipeline_chinese.py           # 中文情感分析
-
+│   ├── transformer_sentiment_classification.py # Transformer 情感分类（手写实现）
+│   └── transformer_encoder_classifier.py       # Transformer 情感分类（使用 PyTorch 模块）
+├── pipeline/                                   # Hugging Face Pipeline 快速应用
+│   ├── sentiment_analysis_demo.py              # 英文情感分析
+│   └── sentiment_pipeline_chinese.py           # 中文情感分析
+├── sentiment_classifier/                       # BERT 二分类微调
+│   └── bert_finetune_sentiment.py              # 中文情感分类（ChnSentiCorp）
+└── news_classifier/                            # BERT 多分类微调
+    └── bert_news_multiclass.py                 # 中文新闻分类（CLUE tnews 15分类）
 ```
 
 ## 🚀 simple_demo
@@ -138,9 +131,9 @@ python rnn_text_classifier.py
 
 ---
 
-### 4. Transformer 情感分类器 (`transformer_sentiment_classification.py`)
+### 4. Transformer 情感分类器（手写实现）(`transformer_sentiment_classification.py`)
 
-**功能**：使用 Transformer 编码器进行文本情感分类
+**功能**：从零实现 Transformer 编码器进行文本情感分类
 
 **核心概念**：
 
@@ -152,29 +145,20 @@ python rnn_text_classifier.py
 **模型结构**：
 
 ```
-
 MiniTransformerEncoder:
-
   - Embedding 层 + 位置编码 (vocab_size → 8)
-
-  - Self-Attention 层 (Q, K, V 变换)
-
+  - Self-Attention 层 (Q, K, V 变换) ← 手写实现
   - LayerNorm + 残差连接
-
   - FeedForward 层 (8 → 16 → 8)
-
   - LayerNorm + 残差连接
-
   - 分类层 (8 → 2)
-
   - 输出：正面 / 负面
-
 ```
 
 **关键技术**：
 
 - **Self-Attention**：$\text{Attention}(Q, K, V) = \text{softmax}(\frac{QK^T}{\sqrt{d_k}})V$
-- **位置编码**：使用可学习的位置参数，而非固定的 sin/cos 编码
+- **位置编码**：使用可学习的位置参数
 - **残差连接**：$\text{output} = \text{LayerNorm}(x + \text{SubLayer}(x))$
 - **CLS Token**：使用第一个位置的输出作为句子表示
 
@@ -182,23 +166,57 @@ MiniTransformerEncoder:
 
 - 训练 50 轮，快速收敛
 - 可视化注意力权重矩阵，理解模型关注的词
-- 对测试句子进行情感预测
 
 **运行方式**：
 
 ```bash
-
 cd simple_demo
-
 python transformer_sentiment_classification.py
-
 ```
 
 ---
 
-## 🤗 huggingface_demo
+### 5. Transformer 情感分类器（PyTorch 模块）(`transformer_encoder_classifier.py`)
 
-使用 Hugging Face Transformers 库，快速应用预训练模型。
+**功能**：使用 PyTorch 内置的 `nn.TransformerEncoder` 进行文本情感分类
+
+**核心概念**：
+
+- 使用 PyTorch 提供的 `nn.TransformerEncoderLayer` 和 `nn.TransformerEncoder`
+- 多头注意力机制 (Multi-Head Attention)
+- 支持多层 Transformer 堆叠
+
+**模型结构**：
+
+```
+TransformerClassifier:
+  - Embedding 层 + 位置编码 (vocab_size → 16)
+  - TransformerEncoderLayer × 2 (2 heads, FFN = dim × 4)
+  - 分类层 (16 → 2)
+  - 输出：正面 / 负面
+```
+
+**与手写版本的对比**：
+
+| 特性     | 手写版本   | PyTorch 模块版本      |
+| -------- | ---------- | --------------------- |
+| 注意力   | 单头       | 多头 (2 heads)        |
+| 层数     | 1 层       | 2 层                  |
+| 实现     | 手写 Q/K/V | nn.TransformerEncoder |
+| 学习目的 | 理解原理   | 工程应用              |
+
+**运行方式**：
+
+```bash
+cd simple_demo
+python transformer_encoder_classifier.py
+```
+
+---
+
+## 🔌 pipeline
+
+使用 Hugging Face Pipeline API，快速应用预训练模型，无需训练。
 
 ### 1. 英文情感分析 (`sentiment_analysis_demo.py`)
 
@@ -213,26 +231,18 @@ python transformer_sentiment_classification.py
 **示例代码**：
 
 ```python
-
 from transformers import pipeline
 
-
 clf = pipeline("sentiment-analysis")
-
 result = clf("this movie is very boring!")
-
 print(result)  # [{'label': 'NEGATIVE', 'score': 0.9998}]
-
 ```
 
 **运行方式**：
 
 ```bash
-
-cd huggingface_demo
-
+cd pipeline
 python sentiment_analysis_demo.py
-
 ```
 
 ---
@@ -250,51 +260,142 @@ python sentiment_analysis_demo.py
 **示例代码**：
 
 ```python
-
 from transformers import pipeline
 
-
 clf = pipeline(
-
     "sentiment-analysis",
-
     model="uer/roberta-base-finetuned-jd-binary-chinese"
-
 )
 
-
 texts = [
-
     "这个电影真的太好看了，我特别喜欢！",
-
     "这个手机太卡了，我非常失望。"
-
 ]
 
-
 for t in texts:
-
     result = clf(t)
-
     print(t, "=>", result)
-
 ```
 
 **运行方式**：
 
 ```bash
-
-cd huggingface_demo
-
+cd pipeline
 python sentiment_pipeline_chinese.py
-
 ```
 
-**优势**：
+---
 
-- 无需手动准备训练数据
-- 效果远超从零训练的小模型
-- 支持多语言和多种 NLP 任务
+## 🎯 sentiment_classifier
+
+使用 BERT 预训练模型进行微调 (Fine-tuning)，实现更高精度的情感分类。
+
+### BERT 情感分类微调 (`bert_finetune_sentiment.py`)
+
+**功能**：在 ChnSentiCorp 中文情感数据集上微调 BERT 模型
+
+**核心概念**：
+
+- **Fine-tuning**：在预训练模型基础上，针对特定任务继续训练
+- **BERT**：Bidirectional Encoder Representations from Transformers
+- **数据集**：ChnSentiCorp（中文情感分析数据集，包含酒店、书籍等评论）
+
+**技术细节**：
+
+| 配置项     | 值                  |
+| ---------- | ------------------- |
+| 模型       | bert-base-chinese   |
+| 参数量     | 110M                |
+| 层数       | 12                  |
+| 隐藏维度   | 768                 |
+| 最大长度   | 128                 |
+| Batch Size | 8                   |
+| Epochs     | 1                   |
+| 任务类型   | 二分类（正面/负面） |
+
+**模型缓存**：
+
+- 训练完成后自动保存到 `./my_bert_model`
+- 再次运行时自动加载，无需重新训练
+
+**运行方式**：
+
+```bash
+cd sentiment_classifier
+python bert_finetune_sentiment.py
+```
+
+**预期输出**：
+
+```
+测试文本：'这个电影非常好看，我很喜欢！'
+预测：正面 😊
+```
+
+---
+
+## 📰 news_classifier
+
+使用 BERT 进行多分类任务，实现中文新闻分类。
+
+### BERT 新闻多分类 (`bert_news_multiclass.py`)
+
+**功能**：在 CLUE tnews 数据集上微调 BERT，实现 15 类新闻分类
+
+**核心概念**：
+
+- **多分类任务**：输出 15 个类别的概率分布
+- **CLUE Benchmark**：中文语言理解评测基准
+- **tnews 数据集**：今日头条中文新闻短文本分类
+
+**数据集信息**：
+
+| 属性       | 值              |
+| ---------- | --------------- |
+| 数据集     | CLUE tnews      |
+| 训练集大小 | 53,360 条       |
+| 验证集大小 | 10,000 条       |
+| 类别数量   | 15 类           |
+| 文本类型   | 新闻标题/短文本 |
+
+**15 个新闻类别**：
+
+```
+0: 故事    3: 体育    6: 社会    9: 军事    12: 股票
+1: 文化    4: 财经    7: 教育   10: 旅游    13: 农业
+2: 娱乐    5: 房产    8: 科技   11: 国际    14: 电竞
+```
+
+**技术细节**：
+
+| 配置项        | 值                      |
+| ------------- | ----------------------- |
+| 模型          | bert-base-chinese       |
+| 参数量        | 110M                    |
+| Batch Size    | 16                      |
+| Learning Rate | 2e-5                    |
+| Epochs        | 1                       |
+| 评估指标      | Accuracy + F1 Macro     |
+| 动态 Padding  | DataCollatorWithPadding |
+
+**模型缓存**：
+
+- 训练完成后自动保存到 `./tnews_bert_model`
+- 再次运行时自动加载，无需重新训练
+
+**运行方式**：
+
+```bash
+cd news_classifier
+python bert_news_multiclass.py
+```
+
+**预期输出**：
+
+```
+测试文本: '中国男篮在亚洲杯比赛中大胜日本队'
+预测类别: 体育
+```
 
 ---
 
@@ -335,18 +436,27 @@ python sentiment_pipeline_chinese.py
 - 快速原型开发：无需从零训练
 - 多语言支持：轻松处理中文等非英语任务
 
+### BERT 微调 (Fine-tuning)
+
+- 在预训练模型基础上针对特定任务继续训练
+- 二分类：情感分析（正面/负面）
+- 多分类：新闻分类（15 个类别）
+- 使用 Hugging Face Trainer 简化训练流程
+- 模型缓存机制：避免重复训练
+
 ## 🛠️ 依赖环境
 
 - Python 3.x
 - PyTorch
 - transformers (Hugging Face)
+- datasets (Hugging Face)
+- evaluate
+- accelerate
 
 **安装命令**：
 
 ```bash
-
-pip install torch transformers
-
+pip install torch transformers datasets evaluate accelerate
 ```
 
 ## 📍 学习路径
@@ -356,29 +466,39 @@ pip install torch transformers
 1. **词向量训练** → 理解如何将词转换为向量
 2. **简单情感分类** → 理解如何使用词向量进行文本分类
 3. **RNN 文本分类** → 理解如何用循环神经网络处理序列数据
-4. **Transformer 情感分类** → 理解 Self-Attention 和 Transformer 架构
+4. **Transformer 情感分类（手写）** → 理解 Self-Attention 和 Transformer 架构原理
+5. **Transformer 情感分类（PyTorch）** → 学习使用 PyTorch 内置模块
 
-### 阶段二：工业应用（huggingface_demo）
+### 阶段二：快速应用（pipeline）
 
-5. **Hugging Face 入门** → 学习使用预训练模型
-6. **多语言应用** → 掌握中文 NLP 任务处理
+6. **Hugging Face Pipeline** → 学习使用预训练模型进行推理
+7. **中文 NLP 应用** → 掌握中文模型的使用
+
+### 阶段三：模型微调（sentiment_classifier & news_classifier）
+
+8. **BERT 二分类微调** → 学习在情感分类任务上微调 BERT
+9. **BERT 多分类微调** → 学习在新闻分类任务上微调 BERT
 
 ## 📚 后续计划
 
 **已完成**：
-- [x] 词向量训练
-- [x] 简单情感分类
-- [x] RNN 文本分类
-- [x] Transformer 模型
-- [x] Hugging Face 预训练模型应用
-- [x] 中文 NLP 任务
+
+- [X] 词向量训练
+- [X] 简单情感分类
+- [X] RNN 文本分类
+- [X] Transformer 模型（手写 & PyTorch 模块）
+- [X] Hugging Face Pipeline 应用
+- [X] 中文 NLP 任务
+- [X] BERT 情感分类微调（二分类）
+- [X] BERT 新闻分类微调（多分类 15 类）
 
 **进行中 / 计划中**：
-- [ ] LSTM 序列标注
-- [ ] 注意力机制可视化
-- [ ] 预训练模型微调 (Fine-tuning)
+
+- [ ] LSTM / GRU 序列标注
+- [ ] 注意力机制深入可视化
 - [ ] 命名实体识别 (NER)
 - [ ] 文本生成任务
+- [ ] 大语言模型 (LLM) 应用
 
 ---
 

@@ -37,7 +37,9 @@ __pycache__/
 my_bert_model/
 **/my_bert_model/
 results/
+**/tnews_results/
 **/results/
+**/tnews_bert_model/
 
 # 数据文件
 *.csv

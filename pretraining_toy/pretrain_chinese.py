@@ -1,4 +1,4 @@
-# pretrain_chinese_cuda.py
+# pretrain_chinese.py
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,

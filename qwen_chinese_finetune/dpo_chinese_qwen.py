@@ -33,7 +33,7 @@ SFT_MODEL_PATH = "./qwen_sft"          # ← 你的 SFT 模型路径
 OUTPUT_DIR = "./qwen_dpo"
 MAX_LENGTH = 512
 MAX_PROMPT_LENGTH = 256                # prompt 不能太长，留空间给回答
-BATCH_SIZE = 2                         # DPO 显存占用高，建议 1~2
+BATCH_SIZE = 8                        # DPO 显存占用高，建议 1~2
 GRADIENT_ACCUMULATION_STEPS = 4        # 模拟更大 batch
 LEARNING_RATE = 5e-6                   # DPO 学习率通常比 SFT 小
 BETA = 0.1                             # DPO 的 beta 参数，控制偏离参考模型的程度
@@ -193,23 +193,4 @@ dpo_trainer.train()
 dpo_trainer.save_model(OUTPUT_DIR)
 tokenizer.save_pretrained(OUTPUT_DIR)
 print(f"✅ DPO 模型已保存到 {OUTPUT_DIR}")
-
-# ===== 7. 测试推理 =====
-print("\n===== 测试 DPO 模型 =====")
-model.eval()
-
-test_prompt = "<|im_start|>user\n请介绍一下人工智能<|im_end|>\n<|im_start|>assistant\n"
-inputs = tokenizer(test_prompt, return_tensors="pt").to(model.device)
-
-with torch.no_grad():
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=200,
-        do_sample=True,
-        temperature=0.7,
-        top_p=0.9,
-        pad_token_id=tokenizer.pad_token_id,
-    )
-
-response = tokenizer.decode(outputs[0], skip_special_tokens=False)
-print(f"生成结果:\n{response}")
+print(f"💡 使用 test_dpo.py 测试 DPO 模型效果")

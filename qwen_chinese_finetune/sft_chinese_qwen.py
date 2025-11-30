@@ -29,7 +29,7 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_PATH,
     trust_remote_code=True,
-    torch_dtype=torch.float16,
+    torch_dtype=torch.bfloat16,
     device_map="auto"
 )
 
@@ -39,18 +39,17 @@ if tokenizer.pad_token is None:
 
 # ===== 2. 加载 Firefly 中文指令数据集 =====
 print("Loading Firefly dataset (Chinese instruction tuning data)...")
-raw_dataset = load_dataset("YeungNLP/firefly-train-1.1M", split="train[:10000]")
+raw_dataset = load_dataset("json", data_files="./firefly-train-1.1M.jsonl", split="train[:10000]")
 
-def filter_simple(examples):
-    return [inp == "" for inp in examples["input"]]
-
-dataset = raw_dataset.filter(filter_simple, batched=True)
-print(f"Filtered to {len(dataset)} simple instruction samples.")
+# 不再过滤，直接使用全部样本，防止数据为空
+dataset = raw_dataset
+print(f"Loaded {len(dataset)} samples from local file.")
 
 # ===== 3. 应用 Qwen 对话模板并 tokenize =====
 def format_and_tokenize(examples):
-    instructions = examples["instruction"]
-    outputs = examples["output"]
+    # 适配本地数据集字段名：input -> instruction, target -> output
+    instructions = examples["input"]
+    outputs = examples["target"]
     
     input_ids_list = []
     attention_mask_list = []
@@ -115,11 +114,12 @@ training_args = TrainingArguments(
     logging_steps=50,
     save_steps=500,
     save_total_limit=2,
-    fp16=True,
+    bf16=True,  # 使用 bf16 代替 fp16，更稳定
     report_to="none",
     dataloader_num_workers=4,
     optim="adamw_torch",
     gradient_accumulation_steps=2,
+    remove_unused_columns=False,
 )
 
 # ===== 6. 创建 Trainer =====

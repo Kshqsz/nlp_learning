@@ -18,7 +18,7 @@ MODEL_PATH = "./qwen_pretrained"     # ← 修正：指向预训练模型的正�
 OUTPUT_DIR = "./qwen_sft"
 MAX_LENGTH = 512
 NUM_TRAIN_EPOCHS = 2
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 LEARNING_RATE = 2e-5
 
 set_seed(42)

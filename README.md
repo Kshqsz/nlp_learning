@@ -20,11 +20,14 @@ nlp_learning/
 │   └── bert_finetune_sentiment.py              # 中文情感分类（ChnSentiCorp）
 ├── news_classifier/                            # BERT 多分类微调
 │   └── bert_news_multiclass.py                 # 中文新闻分类（CLUE tnews 15分类）
-└── qwen_chinese_finetune/                      # Qwen 中文预训练 + SFT 微调
+└── qwen_chinese_finetune/                      # Qwen 中文大模型完整训练流程
     ├── pretrain_chinese-nvidia.py              # 中文继续预训练（NVIDIA GPU 版）
     ├── pretrain_chinese-mac.py                 # 中文继续预训练（Apple M4 版）
     ├── sft_chinese_qwen.py                     # 指令微调 (SFT)
-    └── test_gen.py                             # 模型测试推理
+    ├── dpo_chinese_qwen.py                     # 偏好对齐 (DPO)
+    ├── test_gen.py                             # SFT 模型测试
+    ├── test_dpo.py                             # DPO 模型测试（对比 SFT vs DPO）
+    └── chat.py                                 # 交互式聊天测试
 ```
 
 ## 🚀 simple_demo
@@ -406,7 +409,13 @@ python bert_news_multiclass.py
 
 ## 🦙 qwen_chinese_finetune
 
-完整的 Qwen 中文大模型训练流程：继续预训练 → 指令微调 (SFT) → 推理测试。
+完整的 Qwen 中文大模型训练流程：继续预训练 → 指令微调 (SFT) → 偏好对齐 (DPO) → 推理测试。
+
+```
+训练流程: Qwen-0.5B → 继续预训练 → SFT 微调 → DPO 对齐 → 部署推理
+                ↓            ↓           ↓           ↓
+            领域适配      遵循指令    人类偏好对齐   交互测试
+```
 
 ### 1. 中文继续预训练
 
@@ -500,18 +509,56 @@ python sft_chinese_qwen.py
 
 ---
 
-### 3. 模型测试 (`test_gen.py`)
+### 3. 偏好对齐 DPO (`dpo_chinese_qwen.py`)
+
+**功能**：使用 DPO (Direct Preference Optimization) 算法进行人类偏好对齐
+
+**核心概念**：
+
+- **DPO**：直接偏好优化，无需训练奖励模型的 RLHF 替代方案
+- **偏好数据**：包含 chosen（好回答）和 rejected（差回答）的配对数据
+- **参考模型**：使用冻结的 SFT 模型作为参考，防止模型偏离太远
+
+**技术细节**：
+
+| 配置项 | 值 |
+|--------|-----|
+| 基座模型 | SFT 微调后的 Qwen |
+| 数据集 | shibing624/DPO-En-Zh-20k-Preference (中文子集) |
+| 训练样本 | 5,000 条真实人类偏好数据 |
+| Beta | 0.1（控制偏离参考模型的程度）|
+| Batch Size | 2 |
+| 梯度累积 | 4 (有效 batch = 8) |
+| Learning Rate | 5e-6（比 SFT 更小）|
+
+**DPO 原理**：
+
+$$\mathcal{L}_{\text{DPO}} = -\mathbb{E}\left[\log \sigma\left(\beta \log \frac{\pi_\theta(y_w|x)}{\pi_{\text{ref}}(y_w|x)} - \beta \log \frac{\pi_\theta(y_l|x)}{\pi_{\text{ref}}(y_l|x)}\right)\right]$$
+
+其中 $y_w$ 是 chosen 回答，$y_l$ 是 rejected 回答。
+
+**偏好数据格式**：
+
+```json
+{
+  "prompt": "请解释什么是机器学习",
+  "chosen": "机器学习是人工智能的一个分支，通过数据和算法让计算机...",
+  "rejected": "机器学习就是让机器学习。"
+}
+```
+
+**运行方式**：
+
+```bash
+cd qwen_chinese_finetune
+python dpo_chinese_qwen.py
+```
+
+---
+
+### 4. SFT 模型测试 (`test_gen.py`)
 
 **功能**：测试 SFT 微调后的模型推理效果
-
-**示例代码**：
-
-```python
-from test_gen import chat
-
-response = chat("请介绍一下人工智能")
-print(response)
-```
 
 **运行方式**：
 
@@ -520,17 +567,49 @@ cd qwen_chinese_finetune
 python test_gen.py
 ```
 
-**测试输出示例**：
+---
 
+### 5. DPO 模型测试 (`test_dpo.py`)
+
+**功能**：测试 DPO 对齐后的模型效果，支持 SFT vs DPO 对比
+
+**三种测试模式**：
+
+| 模式 | 命令 | 说明 |
+|------|------|------|
+| 对比模式 | `python test_dpo.py --mode compare` | 对比 SFT vs DPO 模型输出 |
+| DPO模式 | `python test_dpo.py --mode dpo` | 只测试 DPO 模型 |
+| 交互模式 | `python test_dpo.py --mode interactive` | 交互式聊天测试 |
+
+**运行方式**：
+
+```bash
+cd qwen_chinese_finetune
+
+# 对比 SFT 和 DPO 模型（默认）
+python test_dpo.py
+
+# 交互式测试
+python test_dpo.py --mode interactive
 ```
-============================================================
-🧪 开始测试 Qwen SFT 模型
-============================================================
 
-【问题 1】请介绍一下人工智能
-----------------------------------------
-【回答】人工智能是计算机科学的一个分支，致力于创建能够...
-============================================================
+---
+
+### 6. 交互式聊天 (`chat.py`)
+
+**功能**：多轮对话交互测试，支持上下文记忆
+
+**特性**：
+
+- 支持多轮对话（最多 5 轮历史）
+- 支持切换不同模型（预训练/SFT/DPO）
+- 内置命令：`clear`（清空历史）、`history`（查看历史）、`quit`（退出）
+
+**运行方式**：
+
+```bash
+cd qwen_chinese_finetune
+python chat.py
 ```
 
 ---
@@ -595,6 +674,14 @@ python test_gen.py
 - Labels 掩码：只对回复部分计算 loss
 - 数据集：Firefly 中文指令数据集
 
+### 偏好对齐 (DPO)
+
+- **DPO vs RLHF**：DPO 直接从偏好数据学习，无需训练奖励模型
+- **偏好数据**：真实人类标注的 chosen/rejected 回答对
+- **参考模型**：使用 SFT 模型作为参考，控制模型变化幅度
+- **Beta 参数**：控制偏离参考模型的程度（通常 0.1~0.5）
+- **学习率**：比 SFT 更小（5e-6 vs 2e-5）
+
 ## 🛠️ 依赖环境
 
 - Python 3.x
@@ -634,7 +721,9 @@ pip install torch transformers datasets evaluate accelerate
 
 10. **中文继续预训练** → 学习如何对 LLM 进行领域适配
 11. **指令微调 (SFT)** → 学习如何让模型遵循指令对话
-12. **模型推理测试** → 学习如何部署和测试微调后的模型
+12. **偏好对齐 (DPO)** → 学习如何使用人类偏好数据对齐模型
+13. **模型对比测试** → 学习如何评估 SFT vs DPO 的效果差异
+14. **交互式部署** → 学习如何构建多轮对话系统
 
 ## 📚 后续计划
 
@@ -651,6 +740,9 @@ pip install torch transformers datasets evaluate accelerate
 - [X] LLM 继续预训练（Qwen 0.5B + 中文维基）
 - [X] 指令微调 SFT（Firefly 中文指令数据集）
 - [X] 多平台支持（NVIDIA GPU / Apple M4）
+- [X] DPO 偏好对齐（真实人类偏好数据集）
+- [X] 模型对比测试（SFT vs DPO）
+- [X] 交互式多轮对话
 
 **进行中 / 计划中**：
 
@@ -659,7 +751,7 @@ pip install torch transformers datasets evaluate accelerate
 - [ ] 命名实体识别 (NER)
 - [ ] 文本生成任务
 - [ ] LoRA / QLoRA 高效微调
-- [ ] RLHF / DPO 对齐训练
+- [ ] PPO / RLHF 对齐训练
 
 ---
 

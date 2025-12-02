@@ -28,9 +28,13 @@ nlp_learning/
     ├── pretrain_chinese-mac.py                 # 中文继续预训练（Apple M4 版）
     ├── sft_chinese_qwen.py                     # 指令微调 (SFT)
     ├── dpo_chinese_qwen.py                     # 偏好对齐 (DPO)
+    ├── reward_model.py                         # 奖励模型训练 (RLHF Step 1)
+    ├── ppo_alignment.py                        # PPO 对齐训练 (RLHF Step 2)
+    ├── compare_alignment.py                    # SFT vs DPO vs PPO 对比
     ├── test_gen.py                             # SFT 模型测试
-    ├── test_dpo.py                             # DPO 模型测试（对比 SFT vs DPO）
-    └── chat.py                                 # 交互式聊天测试
+    ├── test_dpo.py                             # DPO 模型测试
+    ├── test_ppo.py                             # PPO 模型测试
+    └── rlhf_readme.py                          # RLHF 流程说明文档
 ```
 
 ## 🚀 simple_demo
@@ -722,6 +726,97 @@ python chat.py
 
 ---
 
+### 7. RLHF 奖励模型 (`reward_model.py`)
+
+**功能**：训练奖励模型（Reward Model），学习人类偏好打分
+
+**核心概念**：
+
+- **奖励模型**：给模型回答打分，分数越高表示人类越喜欢
+- **Pairwise Ranking Loss**：让 chosen 的分数高于 rejected
+- **模型架构**：SFT 模型 + 线性奖励头
+
+**技术细节**：
+
+| 配置项 | 值 |
+|--------|-----|
+| 基座模型 | SFT 模型 |
+| 输出 | 标量分数 |
+| 损失函数 | -log(sigmoid(r_chosen - r_rejected)) |
+| Learning Rate | 1e-5 |
+
+**运行方式**：
+
+```bash
+cd qwen_chinese_finetune
+python reward_model.py
+```
+
+---
+
+### 8. PPO 对齐训练 (`ppo_alignment.py`)
+
+**功能**：使用 PPO 算法进行强化学习对齐（完整 RLHF 流程）
+
+**核心概念**：
+
+- **PPO**：Proximal Policy Optimization，策略梯度强化学习算法
+- **Actor-Critic**：策略网络生成回答，价值网络估计状态价值
+- **KL 惩罚**：防止模型偏离参考模型太远
+
+**RLHF vs DPO 对比**：
+
+```
+RLHF: 偏好数据 → Reward Model → PPO → 对齐模型（两阶段）
+DPO:  偏好数据 → 直接优化 → 对齐模型（一阶段）
+```
+
+**技术细节**：
+
+| 配置项 | 值 |
+|--------|-----|
+| 基座模型 | SFT 模型 |
+| 奖励来源 | 训练好的 Reward Model |
+| PPO Epochs | 4 |
+| KL Penalty | 0.1 |
+| Learning Rate | 1e-5 |
+
+**运行方式**：
+
+```bash
+cd qwen_chinese_finetune
+# 先训练奖励模型
+python reward_model.py
+# 再运行 PPO
+python ppo_alignment.py
+```
+
+---
+
+### 9. 对齐方法对比 (`compare_alignment.py`)
+
+**功能**：对比 SFT、DPO、PPO 三种方法的效果
+
+**对比维度**：
+- 回答质量（主观评估）
+- 回答长度分布
+- 词汇多样性
+- 奖励模型分数
+
+**运行方式**：
+
+```bash
+cd qwen_chinese_finetune
+
+# 对比所有模型
+python compare_alignment.py --mode all
+
+# 只对比 DPO 和 PPO
+python compare_alignment.py --mode dpo-ppo
+```
+
+---
+
 ## 💡 学习要点
 
 ### 词向量 (Word Embedding)
@@ -798,6 +893,15 @@ python chat.py
 - **Beta 参数**：控制偏离参考模型的程度（通常 0.1~0.5）
 - **学习率**：比 SFT 更小（5e-6 vs 2e-5）
 
+### RLHF / PPO 强化学习对齐
+
+- **完整 RLHF 流程**：SFT → Reward Model → PPO → 对齐模型
+- **奖励模型**：学习人类偏好，给回答打分（Pairwise Ranking Loss）
+- **PPO 算法**：Proximal Policy Optimization，策略梯度强化学习
+- **Actor-Critic**：策略网络（生成）+ 价值网络（估值）
+- **KL 惩罚**：防止模型偏离参考模型太远，保持稳定性
+- **对比 DPO**：PPO 更复杂但可在线学习，DPO 更简单稳定
+
 ## 🛠️ 依赖环境
 
 - Python 3.x
@@ -866,6 +970,9 @@ pip install torch transformers datasets evaluate accelerate
 - [X] DPO 偏好对齐（真实人类偏好数据集）
 - [X] 模型对比测试（SFT vs DPO）
 - [X] 交互式多轮对话
+- [X] RLHF 奖励模型训练（Reward Model）
+- [X] PPO 强化学习对齐（完整 RLHF 流程）
+- [X] SFT vs DPO vs PPO 对比实验
 
 **进行中 / 计划中**：
 
@@ -874,7 +981,8 @@ pip install torch transformers datasets evaluate accelerate
 - [ ] 命名实体识别 (NER)
 - [ ] 文本生成任务
 - [ ] LoRA / QLoRA 高效微调
-- [ ] PPO / RLHF 对齐训练
+- [ ] RAG 检索增强生成
+- [ ] Agent 工具调用
 
 ---
 

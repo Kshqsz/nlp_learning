@@ -947,8 +947,10 @@ pip install torch transformers datasets evaluate accelerate
 12. **中文继续预训练** → 学习如何对 LLM 进行领域适配
 13. **指令微调 (SFT)** → 学习如何让模型遵循指令对话
 14. **偏好对齐 (DPO)** → 学习如何使用人类偏好数据对齐模型
-15. **模型对比测试** → 学习如何评估 SFT vs DPO 的效果差异
-16. **交互式部署** → 学习如何构建多轮对话系统
+15. **奖励模型训练 (Reward Model)** → 学习如何训练打分模型（RLHF Step 1）
+16. **PPO 强化学习对齐** → 学习完整 RLHF 流程：SFT → RM → PPO（RLHF Step 2）
+17. **SFT vs DPO vs PPO 对比** → 学习如何对比评估不同对齐方法的效果
+18. **交互式部署** → 学习如何构建多轮对话系统
 
 ## 📚 后续计划
 

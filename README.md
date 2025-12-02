@@ -32,9 +32,9 @@ nlp_learning/
     ├── ppo_alignment.py                        # PPO 对齐训练 (RLHF Step 2)
     ├── compare_alignment.py                    # SFT vs DPO vs PPO 对比
     ├── test_gen.py                             # SFT 模型测试
+    ├── test_sft.py                             # SFT 模型测试
     ├── test_dpo.py                             # DPO 模型测试
-    ├── test_ppo.py                             # PPO 模型测试
-    └── rlhf_readme.py                          # RLHF 流程说明文档
+    └── test_ppo.py                             # PPO 模型测试
 ```
 
 ## 🚀 simple_demo

@@ -37,7 +37,7 @@ SFT_MODEL_PATH = "./qwen_sft"           # 从 SFT 模型初始化 RM
 OUTPUT_DIR = "./qwen_reward_model"
 MAX_LENGTH = 512
 BATCH_SIZE = 8
-GRADIENT_ACCUMULATION_STEPS = 4         # 有效 batch = 16
+GRADIENT_ACCUMULATION_STEPS = 4         # 有效 batch = 32
 LEARNING_RATE = 1e-5
 NUM_EPOCHS = 1
 NUM_SAMPLES = 5000                      # 使用多少样本训练

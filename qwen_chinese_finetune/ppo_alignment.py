@@ -44,8 +44,9 @@ SFT_MODEL_PATH = "./qwen_sft"              # SFT 模型（作为初始策略）
 REWARD_MODEL_PATH = "./qwen_reward_model"  # 奖励模型
 OUTPUT_DIR = "./qwen_ppo"
 MAX_LENGTH = 512
-MAX_NEW_TOKENS = 128                        # 生成的最大新 token 数
-BATCH_SIZE = 4                              # 每批处理的 prompt 数量
+MAX_NEW_TOKENS = 64                         # 生成的最大新 token 数（减少以节省显存）
+BATCH_SIZE = 2                              # 每批处理的 prompt 数量（减少以节省显存）
+GRADIENT_ACCUMULATION_STEPS = 2             # 梯度累积步数（有效 batch = 4）
 LEARNING_RATE = 1e-5
 NUM_TRAIN_STEPS = 200                       # 总训练步数
 KL_COEF = 0.1                               # KL 散度惩罚系数
@@ -55,7 +56,7 @@ VALUE_COEF = 0.5                            # Value loss 系数
 ENTROPY_COEF = 0.01                         # 熵奖励系数
 GAE_LAMBDA = 0.95                           # GAE lambda
 GAMMA = 1.0                                 # 折扣因子
-NUM_PPO_EPOCHS = 4                          # 每个 batch 的 PPO 更新轮数
+NUM_PPO_EPOCHS = 2                          # 每个 batch 的 PPO 更新轮数（减少以节省显存）
 NUM_SAMPLES = 1000                          # 使用多少 prompt 训练
 
 
@@ -435,12 +436,15 @@ def train_ppo():
     print("=" * 60)
     print(f"   - 训练步数: {NUM_TRAIN_STEPS}")
     print(f"   - Batch Size: {BATCH_SIZE}")
+    print(f"   - 梯度累积: {GRADIENT_ACCUMULATION_STEPS}")
+    print(f"   - 有效 Batch: {BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS}")
     print(f"   - PPO Epochs: {NUM_PPO_EPOCHS}")
     print(f"   - Learning Rate: {LEARNING_RATE}")
     print(f"   - KL Coefficient: {KL_COEF}")
     
     # ===== 主训练循环 =====
     prompt_idx = 0
+    optimizer.zero_grad()  # 初始化梯度
     
     for step in tqdm(range(NUM_TRAIN_STEPS), desc="PPO Training"):
         # 采样一个 batch 的 prompt
@@ -513,6 +517,9 @@ def train_ppo():
         
         rewards = torch.tensor(rewards, dtype=torch.float32, device=policy_model.device)
         all_rewards.append(rewards.mean().item())
+        
+        # 清理生成阶段的显存
+        torch.cuda.empty_cache()
         
         # ===== 计算 old log probs 和 values =====
         policy_model.eval()
@@ -601,19 +608,31 @@ def train_ppo():
                 VALUE_CLIP_RANGE
             )
             
-            # Entropy bonus (鼓励探索)
-            log_probs_all = F.log_softmax(new_logits, dim=-1)
-            probs_all = F.softmax(new_logits, dim=-1)
-            entropy = -(probs_all * log_probs_all).sum(dim=-1).mean()
+            # Entropy bonus (鼓励探索) - 简化计算以节省显存
+            # 只在 response 部分计算熵
+            response_logits = new_logits[:, :-1, :] * response_mask[:, 1:].unsqueeze(-1)
+            log_probs_all = F.log_softmax(response_logits, dim=-1)
+            probs_all = F.softmax(response_logits, dim=-1)
+            entropy = -(probs_all * log_probs_all).sum(dim=-1)
+            entropy = (entropy * response_mask[:, 1:]).sum() / (response_mask[:, 1:].sum() + 1e-8)
             
-            # Total loss
-            total_loss = policy_loss + VALUE_COEF * v_loss - ENTROPY_COEF * entropy
+            # Total loss (除以梯度累积步数)
+            total_loss = (policy_loss + VALUE_COEF * v_loss - ENTROPY_COEF * entropy) / GRADIENT_ACCUMULATION_STEPS
             
             # Backward
-            optimizer.zero_grad()
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(policy_model.parameters(), 1.0)
-            optimizer.step()
+            
+            # 梯度累积：每 GRADIENT_ACCUMULATION_STEPS 步更新一次
+            if (ppo_epoch + 1) % GRADIENT_ACCUMULATION_STEPS == 0 or ppo_epoch == NUM_PPO_EPOCHS - 1:
+                torch.nn.utils.clip_grad_norm_(policy_model.parameters(), 1.0)
+                optimizer.step()
+                optimizer.zero_grad()
+            
+            # 清理中间变量
+            del new_logits, new_values, response_logits, log_probs_all, probs_all
+        
+        # 清理显存
+        torch.cuda.empty_cache()
         
         scheduler.step()
         

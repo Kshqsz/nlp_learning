@@ -1,12 +1,18 @@
 # pretrain_qwen3b.py
 """
-Qwen2.5-3B 继续预训练（全量微调）
+Qwen2.5-3B 继续预训练（DeepSpeed ZeRO-2 优化）
 
 硬件要求：NVIDIA 4090D (24GB)
 显存优化：
+  - DeepSpeed ZeRO-2: 分片优化器状态和梯度
+  - CPU Offload: 优化器状态卸载到 CPU
   - gradient_checkpointing: 用计算换显存
   - bf16: 半精度训练
-  - 小 batch + 梯度累积
+
+运行方式（二选一）：
+  python pretrain_qwen3b.py
+  或
+  deepspeed --num_gpus=1 pretrain_qwen3b.py
 
 继续预训练 vs 从零预训练：
   - 从零预训练：随机初始化，需要数万亿 token
@@ -29,17 +35,41 @@ from transformers import (
 MODEL_NAME = "Qwen/Qwen2.5-3B"
 OUTPUT_DIR = "./qwen3b_pretrain"
 MAX_LENGTH = 512          # 序列长度（越长显存越大）
-BATCH_SIZE = 1            # 4090D 上需要很小的 batch
-GRADIENT_ACCUMULATION_STEPS = 16  # 有效 batch = 1 * 16 = 16
+BATCH_SIZE = 2            # DeepSpeed 可以稍大一点
+GRADIENT_ACCUMULATION_STEPS = 8  # 有效 batch = 2 * 8 = 16
 LEARNING_RATE = 1e-5      # 继续预训练用较小学习率
 NUM_EPOCHS = 1
 NUM_SAMPLES = 50000       # 训练样本数（可根据需要调整）
 SAVE_STEPS = 500
 LOGGING_STEPS = 50
 
+# ===== DeepSpeed 配置 =====
+DEEPSPEED_CONFIG = {
+    "zero_optimization": {
+        "stage": 2,  # ZeRO-2：分片优化器状态和梯度
+        "offload_optimizer": {
+            "device": "cpu",  # 优化器状态卸载到 CPU，大幅节省显存
+            "pin_memory": True
+        },
+        "allgather_partitions": True,
+        "allgather_bucket_size": 2e8,
+        "reduce_scatter": True,
+        "reduce_bucket_size": 2e8,
+        "overlap_comm": True,
+        "contiguous_gradients": True,
+    },
+    "bf16": {
+        "enabled": True
+    },
+    "gradient_accumulation_steps": GRADIENT_ACCUMULATION_STEPS,
+    "gradient_clipping": 1.0,
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": "auto",
+}
+
 # ===== 1. 加载模型和 Tokenizer =====
 print("=" * 60)
-print("🚀 Qwen2.5-3B 继续预训练")
+print("🚀 Qwen2.5-3B 继续预训练 (DeepSpeed ZeRO-2)")
 print("=" * 60)
 print(f"模型: {MODEL_NAME}")
 print(f"序列长度: {MAX_LENGTH}")
@@ -50,11 +80,12 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
+# 注意：使用 DeepSpeed 时不要用 device_map="auto"，DeepSpeed 会自己管理
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
     trust_remote_code=True,
     torch_dtype=torch.bfloat16,
-    device_map="auto",
+    # device_map="auto",  # DeepSpeed 不需要这个
 )
 
 # 启用梯度检查点（用计算换显存，必须开启）
@@ -65,30 +96,24 @@ total_params = sum(p.numel() for p in model.parameters())
 print(f"✅ 模型加载完成")
 print(f"   参数量: {total_params / 1e9:.2f}B")
 
-if torch.cuda.is_available():
-    print(f"   当前显存: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
-
 
 # ===== 2. 加载数据集 =====
 print("\n📊 加载训练数据...")
 
-# 使用中文维基百科数据（适合继续预训练）
-# 也可以替换成你自己的领域数据
-try:
-    # 尝试加载中文维基数据
-    raw_dataset = load_dataset(
-        "pleisto/wikipedia-cn-20230720-filtered",
-        split=f"train[:{NUM_SAMPLES}]"
-    )
-    text_column = "completion"
-except:
-    # 备选：使用 firefly 数据
-    print("⚠️ 维基数据加载失败，使用备选数据集...")
-    raw_dataset = load_dataset(
-        "YeungNLP/firefly-train-1.1M",
-        split=f"train[:{NUM_SAMPLES}]"
-    )
-    text_column = None  # 需要拼接 input + target
+# 从本地 JSON 文件加载中文维基百科数据
+DATA_PATH = "./wikipedia-cn-20230720-filtered.json"  # 本地 JSON 文件路径
+
+raw_dataset = load_dataset(
+    "json",
+    data_files=DATA_PATH,
+    split="train"
+)
+
+# 如果数据量大于 NUM_SAMPLES，只取前 NUM_SAMPLES 条
+if len(raw_dataset) > NUM_SAMPLES:
+    raw_dataset = raw_dataset.select(range(NUM_SAMPLES))
+
+text_column = "completion"  # JSON 中的文本字段名，根据实际情况修改
 
 print(f"✅ 加载 {len(raw_dataset)} 条数据")
 
@@ -100,15 +125,8 @@ def tokenize_function(examples):
     - 纯文本，无对话格式
     - 直接预测下一个 token
     """
-    if text_column and text_column in examples:
-        # 维基百科数据：直接使用文本
-        texts = examples[text_column]
-    else:
-        # Firefly 数据：拼接 input + target
-        texts = [
-            f"{inp}\n{tgt}" 
-            for inp, tgt in zip(examples["input"], examples["target"])
-        ]
+    # 使用 text_column 指定的字段
+    texts = examples[text_column]
     
     # Tokenize
     tokenized = tokenizer(
@@ -148,7 +166,7 @@ data_collator = DataCollatorForLanguageModeling(
 )
 
 
-# ===== 5. 训练配置 =====
+# ===== 5. 训练配置 (DeepSpeed) =====
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
     overwrite_output_dir=True,
@@ -163,10 +181,12 @@ training_args = TrainingArguments(
     lr_scheduler_type="cosine",
     warmup_ratio=0.05,
     
-    # 显存优化（关键！）
+    # 显存优化
     bf16=True,
     gradient_checkpointing=True,
-    optim="adamw_torch_fused",  # 融合优化器，更快更省显存
+    
+    # DeepSpeed 配置
+    deepspeed=DEEPSPEED_CONFIG,
     
     # 日志和保存
     logging_steps=LOGGING_STEPS,
@@ -182,7 +202,7 @@ training_args = TrainingArguments(
 
 # ===== 6. 开始训练 =====
 print("\n" + "=" * 60)
-print("🏋️ 开始继续预训练")
+print("🏋️ 开始继续预训练 (DeepSpeed ZeRO-2)")
 print("=" * 60)
 print(f"   训练样本: {len(tokenized_dataset)}")
 print(f"   Batch Size: {BATCH_SIZE}")
@@ -190,9 +210,7 @@ print(f"   梯度累积: {GRADIENT_ACCUMULATION_STEPS}")
 print(f"   有效 Batch: {BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS}")
 print(f"   学习率: {LEARNING_RATE}")
 print(f"   Epochs: {NUM_EPOCHS}")
-
-if torch.cuda.is_available():
-    print(f"   训练前显存: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+print(f"   DeepSpeed: ZeRO-2 + CPU Offload")
 
 trainer = Trainer(
     model=model,

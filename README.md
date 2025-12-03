@@ -763,12 +763,42 @@ python reward_model.py
 - **PPO**：Proximal Policy Optimization，策略梯度强化学习算法
 - **Actor-Critic**：策略网络生成回答，价值网络估计状态价值
 - **KL 惩罚**：防止模型偏离参考模型太远
+- **手动实现**：不依赖 trl 库，从零实现 PPO 训练循环，便于理解原理
 
 **RLHF vs DPO 对比**：
 
 ```
 RLHF: 偏好数据 → Reward Model → PPO → 对齐模型（两阶段）
 DPO:  偏好数据 → 直接优化 → 对齐模型（一阶段）
+```
+
+**模型架构**：
+
+```
+PolicyModelWithValueHead:
+  - policy_model: Qwen LLM（生成回答）
+  - value_head: Linear 层（预测状态价值）
+
+QwenRewardModel:
+  - base_model: Qwen 编码器
+  - reward_head: Linear 层（输出标量分数）
+```
+
+**PPO 核心算法**：
+
+```python
+# 1. 生成回答
+response = policy_model.generate(prompt)
+
+# 2. 计算奖励
+reward = reward_model(prompt + response)
+
+# 3. 计算优势函数
+advantage = reward - value - KL_penalty
+
+# 4. PPO Clipped Loss
+ratio = exp(new_log_prob - old_log_prob)
+loss = -min(ratio * A, clip(ratio, 1-ε, 1+ε) * A)
 ```
 
 **技术细节**：
@@ -778,7 +808,10 @@ DPO:  偏好数据 → 直接优化 → 对齐模型（一阶段）
 | 基座模型 | SFT 模型 |
 | 奖励来源 | 训练好的 Reward Model |
 | PPO Epochs | 4 |
-| KL Penalty | 0.1 |
+| KL Coefficient | 0.1 |
+| Clip Range | 0.2 |
+| Value Coefficient | 0.5 |
+| Entropy Coefficient | 0.01 |
 | Learning Rate | 1e-5 |
 
 **运行方式**：
@@ -900,6 +933,8 @@ python compare_alignment.py --mode dpo-ppo
 - **PPO 算法**：Proximal Policy Optimization，策略梯度强化学习
 - **Actor-Critic**：策略网络（生成）+ 价值网络（估值）
 - **KL 惩罚**：防止模型偏离参考模型太远，保持稳定性
+- **PPO Clipped Loss**：$L = -\min(r \cdot A, \text{clip}(r, 1-\epsilon, 1+\epsilon) \cdot A)$
+- **手动实现优势**：不依赖 trl 库，清晰理解 PPO 原理，避免版本兼容问题
 - **对比 DPO**：PPO 更复杂但可在线学习，DPO 更简单稳定
 
 ## 🛠️ 依赖环境

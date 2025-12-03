@@ -78,6 +78,10 @@ class QwenRewardModel(nn.Module):
         super().__init__()
         self.model = base_model
         self.reward_head = nn.Linear(hidden_size, 1, bias=False)
+        # 确保 reward_head 与 base_model 在同一设备和 dtype
+        device = next(base_model.parameters()).device
+        dtype = next(base_model.parameters()).dtype
+        self.reward_head.to(device=device, dtype=dtype)
         
     def forward(self, input_ids, attention_mask=None):
         outputs = self.model(

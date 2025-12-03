@@ -45,8 +45,6 @@ NUM_SAMPLES = 5000                      # 使用多少样本训练
 
 # ===== 1. 自定义奖励模型 =====
 class QwenRewardModel(PreTrainedModel):
-    _supports_gradient_checkpointing = True
-
     """
     奖励模型架构：
     
@@ -73,6 +71,9 @@ class QwenRewardModel(PreTrainedModel):
         
         # 奖励头：将隐藏状态映射到标量分数
         self.reward_head = nn.Linear(config.hidden_size, 1, bias=False)
+        
+        # 支持 gradient checkpointing
+        self.supports_gradient_checkpointing = True
 
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
         self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
@@ -379,9 +380,12 @@ def test_reward_model():
         good_tokens = tokenizer(good_text, return_tensors="pt", max_length=MAX_LENGTH, truncation=True)
         bad_tokens = tokenizer(bad_text, return_tensors="pt", max_length=MAX_LENGTH, truncation=True)
         
+        # 获取模型所在设备
+        device = next(reward_model.parameters()).device
+        
         with torch.no_grad():
-            good_tokens = {k: v.to(reward_model.device) for k, v in good_tokens.items()}
-            bad_tokens = {k: v.to(reward_model.device) for k, v in bad_tokens.items()}
+            good_tokens = {k: v.to(device) for k, v in good_tokens.items()}
+            bad_tokens = {k: v.to(device) for k, v in bad_tokens.items()}
             
             good_score = reward_model(**good_tokens).item()
             bad_score = reward_model(**bad_tokens).item()

@@ -45,6 +45,8 @@ NUM_SAMPLES = 5000                      # 使用多少样本训练
 
 # ===== 1. 自定义奖励模型 =====
 class QwenRewardModel(PreTrainedModel):
+    _supports_gradient_checkpointing = True
+
     """
     奖励模型架构：
     
@@ -71,6 +73,9 @@ class QwenRewardModel(PreTrainedModel):
         
         # 奖励头：将隐藏状态映射到标量分数
         self.reward_head = nn.Linear(config.hidden_size, 1, bias=False)
+
+    def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
+        self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
         
     def forward(
         self,

@@ -32,7 +32,7 @@ from transformers import (
 )
 
 # ===== 配置 =====
-MODEL_NAME = "Qwen/Qwen2.5-3B"
+MODEL_NAME = "/public/huggingface-models/Qwen/Qwen2.5-3B"
 OUTPUT_DIR = "./qwen3b_pretrain"
 MAX_LENGTH = 512          # 序列长度（越长显存越大）
 BATCH_SIZE = 2            # DeepSpeed 可以稍大一点
@@ -84,7 +84,8 @@ if tokenizer.pad_token is None:
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
     trust_remote_code=True,
-    torch_dtype=torch.bfloat16,
+    dtype="bfloat16",  # 新版 transformers 使用 dtype
+    low_cpu_mem_usage=True,  # 降低 CPU 内存占用
     # device_map="auto",  # DeepSpeed 不需要这个
 )
 
@@ -249,7 +250,7 @@ torch.cuda.empty_cache()
 model = AutoModelForCausalLM.from_pretrained(
     OUTPUT_DIR,
     trust_remote_code=True,
-    torch_dtype=torch.bfloat16,
+    dtype="bfloat16",
     device_map="auto"
 )
 

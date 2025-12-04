@@ -23,18 +23,23 @@ nlp_learning/
 │   └── bert_finetune_sentiment.py              # 中文情感分类（ChnSentiCorp）
 ├── news_classifier/                            # BERT 多分类微调
 │   └── bert_news_multiclass.py                 # 中文新闻分类（CLUE tnews 15分类）
-└── qwen_chinese_finetune/                      # Qwen 中文大模型完整训练流程
-    ├── pretrain_chinese-nvidia.py              # 中文继续预训练（NVIDIA GPU 版）
-    ├── pretrain_chinese-mac.py                 # 中文继续预训练（Apple M4 版）
-    ├── sft_chinese_qwen.py                     # 指令微调 (SFT)
-    ├── dpo_chinese_qwen.py                     # 偏好对齐 (DPO)
-    ├── reward_model.py                         # 奖励模型训练 (RLHF Step 1)
-    ├── ppo_alignment.py                        # PPO 对齐训练 (RLHF Step 2)
-    ├── compare_alignment.py                    # SFT vs DPO vs PPO 对比
-    ├── test_gen.py                             # SFT 模型测试
-    ├── test_sft.py                             # SFT 模型测试
-    ├── test_dpo.py                             # DPO 模型测试
-    └── test_ppo.py                             # PPO 模型测试
+├── qwen_chinese_finetune/                      # Qwen 0.5B 中文大模型完整训练流程
+│   ├── pretrain_chinese-nvidia.py              # 中文继续预训练（NVIDIA GPU 版）
+│   ├── pretrain_chinese-mac.py                 # 中文继续预训练（Apple M4 版）
+│   ├── sft_chinese_qwen.py                     # 指令微调 (SFT)
+│   ├── dpo_chinese_qwen.py                     # 偏好对齐 (DPO)
+│   ├── reward_model.py                         # 奖励模型训练 (RLHF Step 1)
+│   ├── ppo_alignment.py                        # PPO 对齐训练 (RLHF Step 2)
+│   ├── compare_alignment.py                    # SFT vs DPO vs PPO 对比
+│   ├── test_gen.py                             # SFT 模型测试
+│   ├── test_sft.py                             # SFT 模型测试
+│   ├── test_dpo.py                             # DPO 模型测试
+│   └── test_ppo.py                             # PPO 模型测试
+└── qwen3_1.7b_finetune_project/                # Qwen3-1.7B 大模型微调（24GB 显卡）
+    ├── pretrain_qwen3_1.7b.py                  # 继续预训练（DeepSpeed + CPU Offload）
+    ├── lora_sft_qwen3_1.7b.py                  # LoRA 指令微调（高效低显存）
+    ├── test_pretrain.py                        # 预训练模型测试
+    └── test_sft.py                             # SFT 模型测试
 ```
 
 ## 🚀 simple_demo
@@ -850,6 +855,146 @@ python compare_alignment.py --mode dpo-ppo
 
 ---
 
+## 🚀 qwen3_1.7b_finetune_project
+
+**Qwen3-1.7B 大模型微调项目**，适用于 24GB 显存的消费级显卡（如 RTX 4090）。
+
+### 项目特点
+
+| 特性 | 说明 |
+|------|------|
+| 模型规模 | Qwen3-1.7B（17.2 亿参数） |
+| 显存需求 | 24GB（RTX 4090 / 4090D） |
+| 预训练方式 | DeepSpeed ZeRO-2 + CPU Offload |
+| SFT 方式 | LoRA（仅训练 1% 参数，快速高效） |
+
+### 训练流程
+
+```
+原始模型 (Qwen3-1.7B)
+       ↓
+继续预训练 (pretrain_qwen3_1.7b.py)
+  - DeepSpeed ZeRO-2 + CPU Offload
+  - 中文维基百科数据
+  - 增强领域知识
+       ↓
+LoRA SFT (lora_sft_qwen3_1.7b.py)
+  - 只训练 ~1% 参数
+  - 指令数据 (firefly)
+  - 学会对话和指令遵循
+       ↓
+测试模型效果
+  - test_pretrain.py (续写测试)
+  - test_sft.py (对话测试)
+```
+
+### 1. 继续预训练 (`pretrain_qwen3_1.7b.py`)
+
+**功能**：在中文语料上继续预训练，增强模型的中文能力和领域知识
+
+**技术特点**：
+- **DeepSpeed ZeRO-2**：分片优化器状态和梯度，减少显存占用
+- **CPU Offload**：将优化器状态卸载到 CPU，进一步节省显存
+- **Gradient Checkpointing**：用计算换显存
+
+**配置**：
+```python
+MODEL_NAME = "Qwen/Qwen3-1.7B"
+MAX_LENGTH = 512
+BATCH_SIZE = 1
+GRADIENT_ACCUMULATION_STEPS = 8
+LEARNING_RATE = 1e-5
+```
+
+**运行方式**：
+```bash
+cd qwen3_1.7b_finetune_project
+python pretrain_qwen3_1.7b.py
+```
+
+> ⚠️ 注意：由于 CPU Offload，训练速度较慢（约 30s/step）
+
+---
+
+### 2. LoRA SFT 微调 (`lora_sft_qwen3_1.7b.py`)
+
+**功能**：使用 LoRA 进行高效的指令微调，让模型学会对话
+
+**LoRA 优势**：
+- 只训练约 1% 的参数（17M / 1.7B）
+- 显存占用小，不需要 CPU Offload
+- 训练速度快（约 2-3s/step）
+- 效果接近全量微调
+
+**配置**：
+```python
+LORA_R = 16           # LoRA 秩
+LORA_ALPHA = 32       # 缩放系数
+BATCH_SIZE = 4        # 可以用更大的 batch
+LEARNING_RATE = 2e-4  # LoRA 通常用较大学习率
+TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj", 
+                  "gate_proj", "up_proj", "down_proj"]
+```
+
+**运行方式**：
+```bash
+cd qwen3_1.7b_finetune_project
+python lora_sft_qwen3_1.7b.py
+```
+
+---
+
+### 3. 测试预训练模型 (`test_pretrain.py`)
+
+**功能**：测试预训练后模型的续写能力
+
+**测试方式**：给定文本开头，让模型续写
+
+```bash
+cd qwen3_1.7b_finetune_project
+
+# 单独测试
+python test_pretrain.py
+
+# 对比原始模型
+python test_pretrain.py --compare
+```
+
+---
+
+### 4. 测试 SFT 模型 (`test_sft.py`)
+
+**功能**：测试 LoRA SFT 后模型的对话能力
+
+**测试方式**：使用 ChatML 格式进行对话
+
+```bash
+cd qwen3_1.7b_finetune_project
+
+# 测试 + 交互对话
+python test_sft.py
+
+# 对比基座模型
+python test_sft.py --compare
+
+# 直接进入交互对话
+python test_sft.py --chat
+```
+
+---
+
+### LoRA vs 全量微调对比
+
+| 对比项 | 全量微调 | LoRA |
+|--------|---------|------|
+| 训练参数量 | 100% (1.7B) | ~1% (17M) |
+| 显存需求 | 需要 CPU Offload | 不需要 |
+| 训练速度 | ~30s/step | ~2-3s/step |
+| 效果 | 最好 | 接近全量微调 |
+| 推荐场景 | 预训练 | SFT/微调 |
+
+---
+
 ## 💡 学习要点
 
 ### 词向量 (Word Embedding)
@@ -987,6 +1132,12 @@ pip install torch transformers datasets evaluate accelerate
 17. **SFT vs DPO vs PPO 对比** → 学习如何对比评估不同对齐方法的效果
 18. **交互式部署** → 学习如何构建多轮对话系统
 
+### 阶段六：大模型高效微调（qwen3_1.7b_finetune_project）
+
+19. **DeepSpeed 分布式训练** → 学习使用 ZeRO 优化大模型训练显存
+20. **LoRA 高效微调** → 学习只训练 1% 参数实现高效微调
+21. **CPU Offload 技术** → 学习在有限显存下训练大模型
+
 ## 📚 后续计划
 
 **已完成**：
@@ -1010,6 +1161,8 @@ pip install torch transformers datasets evaluate accelerate
 - [X] RLHF 奖励模型训练（Reward Model）
 - [X] PPO 强化学习对齐（完整 RLHF 流程）
 - [X] SFT vs DPO vs PPO 对比实验
+- [X] LoRA 高效微调（Qwen3-1.7B）
+- [X] DeepSpeed ZeRO-2 + CPU Offload 大模型训练
 
 **进行中 / 计划中**：
 
@@ -1017,7 +1170,7 @@ pip install torch transformers datasets evaluate accelerate
 - [ ] 注意力机制深入可视化
 - [ ] 命名实体识别 (NER)
 - [ ] 文本生成任务
-- [ ] LoRA / QLoRA 高效微调
+- [ ] QLoRA 量化微调
 - [ ] RAG 检索增强生成
 - [ ] Agent 工具调用
 

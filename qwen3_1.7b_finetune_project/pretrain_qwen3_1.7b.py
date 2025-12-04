@@ -1,18 +1,17 @@
-# pretrain_qwen3b.py
+# pretrain_qwen3_1.7b.py
 """
-Qwen2.5-3B 继续预训练（DeepSpeed ZeRO-2 优化）
+Qwen3-1.7B 继续预训练（DeepSpeed ZeRO-2 优化）
 
-硬件要求：NVIDIA 4090D (24GB)
+硬件要求：NVIDIA 4090D (24GB) - 显存充裕
 显存优化：
   - DeepSpeed ZeRO-2: 分片优化器状态和梯度
-  - CPU Offload: 优化器状态卸载到 CPU
   - gradient_checkpointing: 用计算换显存
   - bf16: 半精度训练
 
 运行方式（二选一）：
-  python pretrain_qwen3b.py
+  python pretrain_qwen3_1.7b.py
   或
-  deepspeed --num_gpus=1 pretrain_qwen3b.py
+  deepspeed --num_gpus=1 pretrain_qwen3_1.7b.py
 
 继续预训练 vs 从零预训练：
   - 从零预训练：随机初始化，需要数万亿 token
@@ -32,11 +31,11 @@ from transformers import (
 )
 
 # ===== 配置 =====
-MODEL_NAME = "/public/huggingface-models/Qwen/Qwen2.5-3B"
-OUTPUT_DIR = "./qwen3b_pretrain"
-MAX_LENGTH = 512          # 序列长度（越长显存越大）
-BATCH_SIZE = 2            # DeepSpeed 可以稍大一点
-GRADIENT_ACCUMULATION_STEPS = 8  # 有效 batch = 2 * 8 = 16
+MODEL_NAME = "/public/huggingface-models/Qwen/Qwen3-1.7B"  # Qwen3 1.7B 模型
+OUTPUT_DIR = "./qwen3_1.7b_pretrain"
+MAX_LENGTH = 512          # 1.7B 可以用更长序列
+BATCH_SIZE = 2            # 1.7B 可以用更大 batch
+GRADIENT_ACCUMULATION_STEPS = 8  # 有效 batch = 16
 LEARNING_RATE = 1e-5      # 继续预训练用较小学习率
 NUM_EPOCHS = 1
 NUM_SAMPLES = 50000       # 训练样本数（可根据需要调整）
@@ -47,10 +46,7 @@ LOGGING_STEPS = 50
 DEEPSPEED_CONFIG = {
     "zero_optimization": {
         "stage": 2,  # ZeRO-2：分片优化器状态和梯度
-        "offload_optimizer": {
-            "device": "cpu",  # 优化器状态卸载到 CPU，大幅节省显存
-            "pin_memory": True
-        },
+        # 1.7B 不需要 CPU Offload，速度更快
         "allgather_partitions": True,
         "allgather_bucket_size": 2e8,
         "reduce_scatter": True,
@@ -69,7 +65,7 @@ DEEPSPEED_CONFIG = {
 
 # ===== 1. 加载模型和 Tokenizer =====
 print("=" * 60)
-print("🚀 Qwen2.5-3B 继续预训练 (DeepSpeed ZeRO-2)")
+print("🚀 Qwen3-1.7B 继续预训练 (DeepSpeed ZeRO-2)")
 print("=" * 60)
 print(f"模型: {MODEL_NAME}")
 print(f"序列长度: {MAX_LENGTH}")

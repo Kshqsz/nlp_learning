@@ -95,6 +95,10 @@ lora_config = LoraConfig(
 # 应用 LoRA
 model = get_peft_model(model, lora_config)
 
+# 启用 gradient checkpointing（必须在应用 LoRA 之后）
+model.enable_input_require_grads()  # 关键：让输入需要梯度
+model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+
 # 打印 LoRA 信息
 model.print_trainable_parameters()
 
@@ -204,7 +208,7 @@ training_args = TrainingArguments(
     
     # 显存优化
     bf16=True,
-    gradient_checkpointing=True,
+    gradient_checkpointing=False,  # 已在模型上手动启用
     optim="adamw_torch",
     
     # 日志和保存

@@ -34,11 +34,11 @@ from transformers import (
 MODEL_NAME = "/public/huggingface-models/Qwen/Qwen3-1.7B"  # Qwen3 1.7B 模型
 OUTPUT_DIR = "./qwen3_1.7b_pretrain"
 MAX_LENGTH = 512          # 1.7B 可以用更长序列
-BATCH_SIZE = 2            # 1.7B 可以用更大 batch
-GRADIENT_ACCUMULATION_STEPS = 8  # 有效 batch = 16
+BATCH_SIZE = 1            # 1.7B 可以用更大 batch
+GRADIENT_ACCUMULATION_STEPS = 8  # 有效 batch = 2
 LEARNING_RATE = 1e-5      # 继续预训练用较小学习率
 NUM_EPOCHS = 1
-NUM_SAMPLES = 50000       # 训练样本数（可根据需要调整）
+NUM_SAMPLES = 1000       # 训练样本数（可根据需要调整）
 SAVE_STEPS = 500
 LOGGING_STEPS = 50
 
@@ -46,11 +46,14 @@ LOGGING_STEPS = 50
 DEEPSPEED_CONFIG = {
     "zero_optimization": {
         "stage": 2,  # ZeRO-2：分片优化器状态和梯度
-        # 1.7B 不需要 CPU Offload，速度更快
+        "offload_optimizer": {
+            "device": "cpu",  # 必须开启，否则 OOM
+            "pin_memory": True,
+        },
         "allgather_partitions": True,
-        "allgather_bucket_size": 2e8,
+        "allgather_bucket_size": 5e7,
         "reduce_scatter": True,
-        "reduce_bucket_size": 2e8,
+        "reduce_bucket_size": 5e7,
         "overlap_comm": True,
         "contiguous_gradients": True,
     },

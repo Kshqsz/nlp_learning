@@ -34,6 +34,7 @@ __pycache__/
 *.pth
 *.pt
 *.ckpt
+*.jsonl
 
 # Hugging Face 模型文件夹
 my_bert_model/

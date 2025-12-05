@@ -9,7 +9,7 @@ LoRA 优势：
   - 只训练 ~1% 的参数
   - 显存占用小，不需要 CPU Offload
   - 训练速度快（~2-3s/step）
-  - 效果接近全量微调
+  - 效果接近全量微
 
 运行方式：
   python lora_sft_qwen3_1.7b.py

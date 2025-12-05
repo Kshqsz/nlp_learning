@@ -35,10 +35,10 @@ MODEL_NAME = "/public/huggingface-models/Qwen/Qwen3-1.7B"  # Qwen3 1.7B 模型
 OUTPUT_DIR = "./qwen3_1.7b_pretrain"
 MAX_LENGTH = 512          # 1.7B 可以用更长序列
 BATCH_SIZE = 1            # 1.7B 可以用更大 batch
-GRADIENT_ACCUMULATION_STEPS = 8  # 有效 batch = 2
+GRADIENT_ACCUMULATION_STEPS = 8  # 有效 batch = 8
 LEARNING_RATE = 1e-5      # 继续预训练用较小学习率
 NUM_EPOCHS = 1
-NUM_SAMPLES = 1000       # 训练样本数（可根据需要调整）
+NUM_SAMPLES = 10000       # 训练样本数（可根据需要调整）
 SAVE_STEPS = 500
 LOGGING_STEPS = 50
 

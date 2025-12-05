@@ -1,5 +1,7 @@
 # Python 虚拟环境
 venv/
+venv311/
+law_ai_rag/venv311/
 env/
 ENV/
 .venv/

@@ -38,11 +38,11 @@ LORA_SFT_PATH = "/root/data/hsk-models/qwen3_1.7b_lora_sft"    # LoRA SFT 权重
 
 OUTPUT_DIR = "/root/data/hsk-models/qwen3_1.7b_lora_dpo"
 MAX_LENGTH = 512
-BATCH_SIZE = 2
-GRADIENT_ACCUMULATION_STEPS = 4  # 有效 batch = 8
+BATCH_SIZE = 4
+GRADIENT_ACCUMULATION_STEPS = 4  # 有效 batch = 16
 LEARNING_RATE = 5e-5             # DPO 通常用较小学习率
 NUM_EPOCHS = 1
-NUM_SAMPLES = 5000               # DPO 数据量
+NUM_SAMPLES = 10000               # DPO 数据量
 
 # LoRA 配置（与 SFT 保持一致）
 LORA_R = 16
@@ -151,6 +151,12 @@ def preprocess_dpo_data(examples, tokenizer):
     """
     预处理 DPO 数据
     DPO 需要三元组：(prompt, chosen, rejected)
+    
+    支持的数据格式：
+    1. question, response_chosen, response_rejected (当前数据集)
+    2. prompt, chosen, rejected (标准格式)
+    3. prompt, response, label (rlhf-reward 格式)
+    4. chosen, rejected (hh-rlhf 格式)
     """
     processed = {
         "prompt": [],
@@ -158,9 +164,43 @@ def preprocess_dpo_data(examples, tokenizer):
         "rejected": [],
     }
     
-    # 根据数据集格式处理
-    # 格式1: 已有 prompt, chosen, rejected 字段
-    if "prompt" in examples and "chosen" in examples and "rejected" in examples:
+    # 格式1: question, response_chosen, response_rejected (当前数据集格式)
+    if "question" in examples and "response_chosen" in examples and "response_rejected" in examples:
+        questions = examples.get("question", [])
+        chosen_responses = examples.get("response_chosen", [])
+        rejected_responses = examples.get("response_rejected", [])
+        systems = examples.get("system", [""] * len(questions))
+        histories = examples.get("history", [None] * len(questions))
+        
+        for question, chosen, rejected, system, history in zip(
+            questions, chosen_responses, rejected_responses, systems, histories
+        ):
+            # 跳过过长的样本
+            if len(question) > 300 or len(chosen) > 400 or len(rejected) > 400:
+                continue
+            
+            # 构建完整 prompt（包含 system 和 history）
+            prompt_parts = []
+            if system:
+                prompt_parts.append(f"System: {system}")
+            if history and len(history) > 0:
+                # history 可能是对话历史列表
+                if isinstance(history, list):
+                    for h in history:
+                        if isinstance(h, dict) and "role" in h and "content" in h:
+                            prompt_parts.append(f"{h['role']}: {h['content']}")
+                        elif isinstance(h, str):
+                            prompt_parts.append(h)
+            prompt_parts.append(question)
+            
+            prompt = "\n".join(prompt_parts)
+            
+            processed["prompt"].append(prompt)
+            processed["chosen"].append(chosen)
+            processed["rejected"].append(rejected)
+    
+    # 格式2: 已有 prompt, chosen, rejected 字段
+    elif "prompt" in examples and "chosen" in examples and "rejected" in examples:
         for prompt, chosen, rejected in zip(examples["prompt"], examples["chosen"], examples["rejected"]):
             if len(prompt) > 300 or len(chosen) > 400 or len(rejected) > 400:
                 continue
@@ -168,7 +208,7 @@ def preprocess_dpo_data(examples, tokenizer):
             processed["chosen"].append(chosen)
             processed["rejected"].append(rejected)
     
-    # 格式2: rlhf-reward 格式 (prompt, response, label)
+    # 格式3: rlhf-reward 格式 (prompt, response, label)
     elif "prompt" in examples and "response" in examples:
         # 需要成对处理，这里简化处理
         prompts = examples.get("prompt", [])
@@ -193,7 +233,7 @@ def preprocess_dpo_data(examples, tokenizer):
                 processed["chosen"].append(resp["chosen"])
                 processed["rejected"].append(resp["rejected"])
     
-    # 格式3: hh-rlhf 格式
+    # 格式4: hh-rlhf 格式
     elif "chosen" in examples and "rejected" in examples:
         for chosen, rejected in zip(examples["chosen"], examples["rejected"]):
             # 从 chosen/rejected 中提取 prompt
@@ -352,7 +392,7 @@ def main():
         ref_model=None,  # 使用 model 的副本作为参考模型
         args=dpo_config,
         train_dataset=dataset,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
     )
     
     # 训练

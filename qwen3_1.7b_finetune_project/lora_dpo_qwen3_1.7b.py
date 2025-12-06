@@ -29,14 +29,14 @@ ORIGINAL_MODEL_PATH = "/public/huggingface-models/Qwen/Qwen3-1.7B"
 
 # SFT 模型路径（DPO 的基座）
 # 方式1：使用预训练 + LoRA SFT 的模型
-BASE_MODEL_PATH = "./qwen3_1.7b_pretrain"  # 预训练后的模型
-LORA_SFT_PATH = "./qwen3_1.7b_lora_sft"    # LoRA SFT 权重
+BASE_MODEL_PATH = "/root/data/hsk-models/qwen3_1.7b_pretrain"  # 预训练后的模型
+LORA_SFT_PATH = "/root/data/hsk-models/qwen3_1.7b_lora_sft"    # LoRA SFT 权重
 
 # 如果没有预训练，可以直接用原始模型 + LoRA SFT
 # BASE_MODEL_PATH = ORIGINAL_MODEL_PATH
-# LORA_SFT_PATH = "./qwen3_1.7b_lora_sft"
+# LORA_SFT_PATH = "/root/data/hsk-models/qwen3_1.7b_lora_sft"
 
-OUTPUT_DIR = "./qwen3_1.7b_lora_dpo"
+OUTPUT_DIR = "/root/data/hsk-models/qwen3_1.7b_lora_dpo"
 MAX_LENGTH = 512
 BATCH_SIZE = 2
 GRADIENT_ACCUMULATION_STEPS = 4  # 有效 batch = 8
@@ -105,7 +105,7 @@ def load_dpo_dataset(tokenizer):
     dataset = None
     
     # 方式1：尝试加载本地数据
-    local_dpo_path = "./dpo_data.jsonl"
+    local_dpo_path = "./dpo_zh.jsonl"
     if os.path.exists(local_dpo_path):
         print(f"   使用本地数据: {local_dpo_path}")
         dataset = load_dataset("json", data_files=local_dpo_path, split="train")

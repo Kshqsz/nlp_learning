@@ -432,6 +432,12 @@ def main():
     print(f"\n💾 保存奖励模型到 {OUTPUT_DIR}...")
     model.save_pretrained(OUTPUT_DIR)
     tokenizer.save_pretrained(OUTPUT_DIR)
+
+    # 单独保存 reward head 权重，便于在 PPO 阶段加载
+    try:
+        torch.save(model.reward_head.state_dict(), os.path.join(OUTPUT_DIR, "reward_head.pt"))
+    except Exception as e:
+        print(f"   ⚠️ 保存 reward_head.pt 失败: {e}")
     
     # 保存配置
     config = {

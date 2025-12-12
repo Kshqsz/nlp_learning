@@ -35,7 +35,7 @@ OUTPUT_DIR = "/root/data/hsk-models/qwen3_1.7b_lora_ppo"
 
 # 超参数
 MAX_LENGTH = 512
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 GRADIENT_ACCUMULATION_STEPS = 4  # 有效 batch = 4
 LEARNING_RATE = 1e-5  # PPO 通常用较小学习率
 NUM_EPOCHS = 1
@@ -65,15 +65,22 @@ def load_ppo_dataset():
     print("\n📊 加载 PPO 训练数据...")
     
     # 从 SFT 数据中提取 prompts
-    sft_data_path = "../dataset_generation/chinese_sft_100m.jsonl"
+    sft_data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dpo_zh.jsonl")
     
     if os.path.exists(sft_data_path):
         print(f"   使用 SFT 数据提取 prompts: {sft_data_path}")
         dataset = load_dataset("json", data_files=sft_data_path, split="train")
         
-        # 只保留 input 作为 prompt
+        # 从 DPO/SFT 数据中提取 prompt
+        # 兼容字段：{input} 或 {question} 或 {prompt}
         def extract_prompt(example):
-            return {"prompt": example["input"]}
+            if "input" in example and example["input"] is not None:
+                prompt = example["input"]
+            elif "question" in example and example["question"] is not None:
+                prompt = example["question"]
+            else:
+                prompt = example.get("prompt", "")
+            return {"prompt": prompt}
         
         dataset = dataset.map(extract_prompt, remove_columns=dataset.column_names)
         
@@ -286,16 +293,15 @@ def main():
         return reward
     
     # PPO 训练配置
+    # TRL>=0.25 的 PPOConfig 不再接受 `model_name`，并使用 `num_ppo_epochs/cliprange/kl_coef` 等字段
     ppo_config = PPOConfig(
-        model_name=ORIGINAL_MODEL_PATH,
         learning_rate=LEARNING_RATE,
         batch_size=BATCH_SIZE,
         gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
-        ppo_epochs=PPO_EPOCHS,
-        target_kl=0.1,
+        num_ppo_epochs=PPO_EPOCHS,
+        kl_coef=0.05,
+        cliprange=PPO_CLIP_RANGE,
         whiten_rewards=True,
-        
-        # 奖励参数
         remove_unused_columns=False,
     )
     

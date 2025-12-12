@@ -35,11 +35,11 @@ OUTPUT_DIR = "/root/data/hsk-models/qwen3_1.7b_lora_ppo"
 
 # 超参数
 MAX_LENGTH = 512
-BATCH_SIZE = 2
-GRADIENT_ACCUMULATION_STEPS = 4  # 有效 batch = 4
+BATCH_SIZE = 4
+GRADIENT_ACCUMULATION_STEPS = 4  # 有效 batch = =8
 LEARNING_RATE = 1e-5  # PPO 通常用较小学习率
 NUM_EPOCHS = 1
-NUM_SAMPLES = 2000  # PPO 数据量
+NUM_SAMPLES = 10000  # PPO 数据量
 
 # PPO 特定参数
 PPO_EPOCHS = 4
@@ -228,7 +228,7 @@ def main():
         """预处理 PPO 数据"""
         processed = {
             "prompt": [],
-            "prompt_ids": [],
+            "input_ids": [],
         }
         
         for prompt in examples.get("prompt", []):
@@ -247,8 +247,9 @@ def main():
                 add_special_tokens=False,
             )
             
-            processed["prompt"].append(formatted_prompt)
-            processed["prompt_ids"].append(tokenized["input_ids"])
+        # TRL 0.25.1 PPOTrainer 期望的列名是 input_ids
+        processed["input_ids"].append(tokenized["input_ids"])
+        processed["prompt"].append(formatted_prompt)
         
         return processed
     
@@ -260,10 +261,8 @@ def main():
         num_proc=4,
     )
     
-    processed_dataset = processed_dataset.filter(lambda x: len(x["prompt_ids"]) > 0)
-    print(f"✅ 有效样本: {len(processed_dataset)}")
-    
-    # 自定义 PPO 奖励函数
+    processed_dataset = processed_dataset.filter(lambda x: len(x["input_ids"]) > 0)
+    print(f"✅ 有效样本: {len(processed_dataset)}")    # 自定义 PPO 奖励函数
     def reward_fn(model, prompt_ids, response_ids, tokenizer):
         """
         计算奖励分数
@@ -305,6 +304,10 @@ def main():
         remove_unused_columns=False,
     )
     
+    # 自定义 Data Collator
+    def collator(data):
+        return dict((key, [d[key] for d in data]) for key in data[0])
+
     # 创建 PPO Trainer
     print("\n" + "=" * 60)
     print("🏋️ 开始 PPO 训练")
@@ -318,42 +321,51 @@ def main():
     if torch.cuda.is_available():
         print(f"   训练前显存: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
     
-    # 简化的 PPO 训练实现
-    # 注意：TRL 库的 PPOTrainer 需要特定的数据格式
-    # 这里实现一个基础的 PPO 循环
+    # 初始化 PPOTrainer
+    # TRL 0.25.1: args=ppo_config, processing_class=tokenizer
+    # 注意：TRL 0.25.1 要求显式传入 value_model，或者如果 model 是 PeftModel，它会自动处理
+    # 这里我们简单地复用 reward_model 作为 value_model 的初始化（或者让 TRL 自动处理）
+    # 但由于 TRL 强制要求 value_model 参数，我们传入一个 AutoModelForSequenceClassification
     
-    print("\n💡 PPO 训练实现说明:")
-    print("""
-    由于 TRL 库的 PPOTrainer 有特定的数据和模型要求，
-    这个脚本提供了基础的 PPO 框架。
+    # 为了简化，我们让 value_model = reward_model (共享权重，或者复制一份)
+    # 在标准 PPO 中，value model 通常是独立的，这里为了跑通代码，我们复用
+    value_model = load_reward_model(REWARD_MODEL_PATH, tokenizer)
     
-    完整的 PPO 训练需要：
-    1. 生成阶段：用策略模型生成回答
-    2. 奖励计算：用奖励模型评估回答
-    3. PPO 更新：计算优势函数并更新策略
+    ppo_trainer = PPOTrainer(
+        args=ppo_config,
+        model=model,
+        ref_model=ref_model,
+        processing_class=tokenizer,
+        train_dataset=processed_dataset,
+        data_collator=collator,
+        reward_model=reward_model,
+        value_model=value_model,
+    )
+
+    # 生成参数
+    generation_kwargs = {
+        "min_length": -1,
+        "top_k": 0.0,
+        "top_p": 1.0,
+        "do_sample": True,
+        "pad_token_id": tokenizer.pad_token_id,
+        "max_new_tokens": 128,
+    }
+
+    # 训练循环
+    # TRL 0.25.1 PPOTrainer 继承自 Trainer，直接调用 train()
+    # 不需要手动循环
     
-    为了使用完整的 PPO，建议使用 TRL 库的 PPOTrainer，
-    需要按照其要求准备数据格式。
-    """)
-    
-    # 这里进行基础的训练循环示意
-    model.train()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-    
-    # 简单的训练步骤
-    num_training_steps = (len(processed_dataset) // BATCH_SIZE) * NUM_EPOCHS
-    
-    print(f"\n   预计训练步数: {num_training_steps}")
-    print("\n   ⚠️ 完整 PPO 实现推荐使用 TRL 库的 PPOTrainer")
-    print("   参考: https://github.com/huggingface/trl")
-    
+    print(f"\n🚀 开始训练...")
+    ppo_trainer.train()
+
     # 保存配置
     print(f"\n💾 保存 PPO 模型配置到 {OUTPUT_DIR}...")
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # 保存模型
-    model.save_pretrained(OUTPUT_DIR)
+    ppo_trainer.save_pretrained(OUTPUT_DIR)
     tokenizer.save_pretrained(OUTPUT_DIR)
     
     # 保存配置
@@ -380,36 +392,6 @@ def main():
     
     print("\n✅ PPO 模型配置完成！")
     print(f"📁 模型已保存到: {OUTPUT_DIR}")
-    
-    print("\n" + "=" * 60)
-    print("💡 完整 PPO 实现建议")
-    print("=" * 60)
-    print("""
-    为了实现完整的 PPO 训练，建议：
-    
-    1. 使用 TRL 库的 PPOTrainer：
-       from trl import PPOTrainer, PPOConfig
-       
-    2. 准备数据为：
-       {
-           "prompt": "用户输入",
-           "input_ids": [token_ids],
-       }
-    
-    3. 定义奖励函数：
-       def reward_fn(samples):
-           # 使用奖励模型评分
-           return rewards
-    
-    4. 运行 PPO 训练循环：
-       for epoch in range(num_epochs):
-           outputs = trainer.generate(...)
-           rewards = reward_fn(outputs)
-           trainer.step(rewards)
-    
-    参考实现：TRL 官方文档
-    https://huggingface.co/docs/trl/index
-    """)
 
 
 if __name__ == "__main__":

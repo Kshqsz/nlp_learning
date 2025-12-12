@@ -31,9 +31,10 @@ from datetime import datetime
 
 # ===== 配置 =====
 ORIGINAL_MODEL_PATH = "/public/huggingface-models/Qwen/Qwen3-1.7B"
-PRETRAIN_MODEL_PATH = "./qwen3_1.7b_pretrain"
-LORA_SFT_PATH = "./qwen3_1.7b_lora_sft"
-LORA_DPO_PATH = "./qwen3_1.7b_lora_dpo"
+PRETRAIN_MODEL_PATH = "/root/data/hsk-models/qwen3_1.7b_pretrain"
+LORA_SFT_PATH = "/root/data/hsk-models/qwen3_1.7b_lora_sft"
+LORA_DPO_PATH = "/root/data/hsk-models/qwen3_1.7b_lora_dpo"
+LORA_PPO_PATH = "/root/data/hsk-models/qwen3_1.7b_lora_ppo"
 
 # 快速测试的 MMLU 学科
 QUICK_MMLU_SUBJECTS = [
@@ -110,6 +111,19 @@ class ModelLoader:
                 base_model = base_model.merge_and_unload()
             # 加载 DPO LoRA
             model = PeftModel.from_pretrained(base_model, LORA_DPO_PATH)
+        elif model_type == "ppo":
+            # PPO: 基座 + SFT LoRA (合并) + PPO LoRA
+            base_path = PRETRAIN_MODEL_PATH if os.path.exists(PRETRAIN_MODEL_PATH) else ORIGINAL_MODEL_PATH
+            base_model = AutoModelForCausalLM.from_pretrained(
+                base_path, trust_remote_code=True,
+                torch_dtype=torch.bfloat16, device_map="auto"
+            )
+            # 合并 SFT LoRA
+            if os.path.exists(LORA_SFT_PATH):
+                base_model = PeftModel.from_pretrained(base_model, LORA_SFT_PATH)
+                base_model = base_model.merge_and_unload()
+            # 加载 PPO LoRA
+            model = PeftModel.from_pretrained(base_model, LORA_PPO_PATH)
         else:
             raise ValueError(f"未知模型类型: {model_type}")
         
@@ -546,6 +560,9 @@ def compare_models(quick=False):
     
     if os.path.exists(LORA_DPO_PATH):
         model_types.append(("dpo", "LoRA-DPO"))
+
+    if os.path.exists(LORA_PPO_PATH):
+        model_types.append(("ppo", "LoRA-PPO"))
     
     for model_type, model_name in model_types:
         print(f"\n{'='*60}")
@@ -601,7 +618,7 @@ def evaluate_single_model(model_type, quick=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="大模型综合评测")
     parser.add_argument("--model", type=str, default="pretrain",
-                        choices=["original", "pretrain", "sft", "dpo"],
+                        choices=["original", "pretrain", "sft", "dpo", "ppo"],
                         help="要评测的模型")
     parser.add_argument("--compare", action="store_true",
                         help="对比所有模型")

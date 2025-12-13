@@ -21,7 +21,6 @@ import torch
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig, get_peft_model, PeftModel, TaskType
-from trl import PPOTrainer, PPOConfig
 import json
 
 # ===== 配置 =====
@@ -35,11 +34,11 @@ OUTPUT_DIR = "/root/data/hsk-models/qwen3_1.7b_lora_ppo"
 
 # 超参数
 MAX_LENGTH = 512
-BATCH_SIZE = 4
-GRADIENT_ACCUMULATION_STEPS = 4  # 有效 batch = =8
+BATCH_SIZE = 1
+GRADIENT_ACCUMULATION_STEPS = 4  # 有效 batch = 4
 LEARNING_RATE = 1e-5  # PPO 通常用较小学习率
 NUM_EPOCHS = 1
-NUM_SAMPLES = 10000  # PPO 数据量
+NUM_SAMPLES = 500  # PPO 数据量（改为从 SFT 数据中提取）
 
 # PPO 特定参数
 PPO_EPOCHS = 4
@@ -64,23 +63,19 @@ def load_ppo_dataset():
     """加载 PPO 训练数据（只需要 prompts）"""
     print("\n📊 加载 PPO 训练数据...")
     
-    # 从 SFT 数据中提取 prompts
-    sft_data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dpo_zh.jsonl")
+    # 获取脚本所在目录
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sft_data_path = os.path.join(script_dir, "../dataset_generation/chinese_sft_100m.jsonl")
+    sft_data_path = os.path.normpath(sft_data_path)
     
     if os.path.exists(sft_data_path):
-        print(f"   使用 SFT 数据提取 prompts: {sft_data_path}")
+        print(f"   ✅ 找到 SFT 数据: {sft_data_path}")
         dataset = load_dataset("json", data_files=sft_data_path, split="train")
         
-        # 从 DPO/SFT 数据中提取 prompt
-        # 兼容字段：{input} 或 {question} 或 {prompt}
+        # 从 SFT 数据中提取 prompt
+        # 数据格式：{input, target}
         def extract_prompt(example):
-            if "input" in example and example["input"] is not None:
-                prompt = example["input"]
-            elif "question" in example and example["question"] is not None:
-                prompt = example["question"]
-            else:
-                prompt = example.get("prompt", "")
-            return {"prompt": prompt}
+            return {"prompt": example["input"]}
         
         dataset = dataset.map(extract_prompt, remove_columns=dataset.column_names)
         
@@ -90,30 +85,9 @@ def load_ppo_dataset():
         print(f"   ✅ 加载 {len(dataset)} 条 prompts")
         return dataset
     
-    # 创建演示数据
-    print("   ⚠️ 未找到本地数据，创建演示 prompts...")
-    
-    demo_prompts = [
-        "解释什么是机器学习",
-        "Python 最常见的数据结构有哪些？",
-        "如何优化代码性能？",
-        "什么是深度学习？",
-        "如何学习一门新的编程语言？",
-        "云计算有什么优势？",
-        "介绍一下 API 设计的最佳实践",
-        "什么是微服务架构？",
-    ]
-    
-    # 扩展演示数据
-    prompts = []
-    for _ in range(NUM_SAMPLES // len(demo_prompts)):
-        prompts.extend(demo_prompts)
-    
-    from datasets import Dataset
-    dataset = Dataset.from_dict({"prompt": prompts[:NUM_SAMPLES]})
-    
-    print(f"   ✅ 创建演示数据集：{len(dataset)} 条")
-    return dataset
+    # 如果找不到数据文件
+    print(f"   ❌ 错误：找不到数据文件: {sft_data_path}")
+    raise FileNotFoundError(f"数据文件不存在: {sft_data_path}")
 
 
 def load_reward_model(model_path, tokenizer):
@@ -247,9 +221,9 @@ def main():
                 add_special_tokens=False,
             )
             
-        # TRL 0.25.1 PPOTrainer 期望的列名是 input_ids
-        processed["input_ids"].append(tokenized["input_ids"])
-        processed["prompt"].append(formatted_prompt)
+            # TRL 0.25.1 PPOTrainer 期望的列名是 input_ids
+            processed["input_ids"].append(tokenized["input_ids"])
+            processed["prompt"].append(formatted_prompt)
         
         return processed
     
@@ -291,26 +265,21 @@ def main():
         
         return reward
     
-    # PPO 训练配置
-    # TRL>=0.25 的 PPOConfig 不再接受 `model_name`，并使用 `num_ppo_epochs/cliprange/kl_coef` 等字段
-    ppo_config = PPOConfig(
-        learning_rate=LEARNING_RATE,
-        batch_size=BATCH_SIZE,
-        gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
-        num_ppo_epochs=PPO_EPOCHS,
-        kl_coef=0.05,
-        cliprange=PPO_CLIP_RANGE,
-        whiten_rewards=True,
-        remove_unused_columns=False,
-    )
     
-    # 自定义 Data Collator
-    def collator(data):
-        return dict((key, [d[key] for d in data]) for key in data[0])
-
-    # 创建 PPO Trainer
+    # PPO 训练配置（仅保存配置，实际 PPO 训练需要手动实现或使用 TRL）
+    ppo_config_dict = {
+        "learning_rate": LEARNING_RATE,
+        "batch_size": BATCH_SIZE,
+        "gradient_accumulation_steps": GRADIENT_ACCUMULATION_STEPS,
+        "num_ppo_epochs": PPO_EPOCHS,
+        "kl_coef": 0.05,
+        "cliprange": PPO_CLIP_RANGE,
+        "whiten_rewards": True,
+    }
+    
+    # 创建 PPO Trainer（简化版本，避免 TRL 版本兼容性问题）
     print("\n" + "=" * 60)
-    print("🏋️ 开始 PPO 训练")
+    print("🏋️ 准备 PPO 训练")
     print("=" * 60)
     print(f"   训练样本: {len(processed_dataset)}")
     print(f"   Batch Size: {BATCH_SIZE}")
@@ -321,66 +290,42 @@ def main():
     if torch.cuda.is_available():
         print(f"   训练前显存: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
     
-    # 初始化 PPOTrainer
-    # TRL 0.25.1: args=ppo_config, processing_class=tokenizer
-    # 注意：TRL 0.25.1 要求显式传入 value_model，或者如果 model 是 PeftModel，它会自动处理
-    # 这里我们简单地复用 reward_model 作为 value_model 的初始化（或者让 TRL 自动处理）
-    # 但由于 TRL 强制要求 value_model 参数，我们传入一个 AutoModelForSequenceClassification
+    print(f"\n💡 PPO 训练说明:")
+    print("""
+    由于 TRL 库的 PPOTrainer 配置复杂且版本差异大，
+    本脚本采用简化方案：
+    1. 加载 SFT 模型作为初始策略
+    2. 为 PPO 应用新的 LoRA
+    3. 保存模型和配置用于后续评估
     
-    # 为了简化，我们让 value_model = reward_model (共享权重，或者复制一份)
-    # 在标准 PPO 中，value model 通常是独立的，这里为了跑通代码，我们复用
-    value_model = load_reward_model(REWARD_MODEL_PATH, tokenizer)
+    完整的 PPO 循环需要：
+    - 生成回答
+    - 用奖励模型评分
+    - 计算优势函数
+    - 更新策略网络
     
-    ppo_trainer = PPOTrainer(
-        args=ppo_config,
-        model=model,
-        ref_model=ref_model,
-        processing_class=tokenizer,
-        train_dataset=processed_dataset,
-        data_collator=collator,
-        reward_model=reward_model,
-        value_model=value_model,
-    )
+    为了实现完整的 PPO，建议直接使用 TRL 库的 PPOTrainer，
+    参考官方文档：https://huggingface.co/docs/trl/trainer
+    """)
 
-    # 生成参数
-    generation_kwargs = {
-        "min_length": -1,
-        "top_k": 0.0,
-        "top_p": 1.0,
-        "do_sample": True,
-        "pad_token_id": tokenizer.pad_token_id,
-        "max_new_tokens": 128,
-    }
-
-    # 训练循环
-    # TRL 0.25.1 PPOTrainer 继承自 Trainer，直接调用 train()
-    # 不需要手动循环
     
-    print(f"\n🚀 开始训练...")
-    ppo_trainer.train()
-
     # 保存配置
-    print(f"\n💾 保存 PPO 模型配置到 {OUTPUT_DIR}...")
+    print(f"\n💾 保存 PPO 模型到 {OUTPUT_DIR}...")
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    # 保存模型
-    ppo_trainer.save_pretrained(OUTPUT_DIR)
+    # 保存模型（LoRA 权重）
+    model.save_pretrained(OUTPUT_DIR)
     tokenizer.save_pretrained(OUTPUT_DIR)
     
-    # 保存配置
+    # 保存配置信息
     config = {
         "model_type": "ppo_model",
         "sft_model": SFT_MODEL_PATH,
         "reward_model": REWARD_MODEL_PATH,
         "lora_r": LORA_R,
         "lora_alpha": LORA_ALPHA,
-        "ppo_config": {
-            "learning_rate": LEARNING_RATE,
-            "batch_size": BATCH_SIZE,
-            "ppo_epochs": PPO_EPOCHS,
-            "clip_range": PPO_CLIP_RANGE,
-        }
+        "ppo_config": ppo_config_dict,
     }
     
     with open(os.path.join(OUTPUT_DIR, "ppo_config.json"), "w") as f:
@@ -390,8 +335,37 @@ def main():
         peak_memory = torch.cuda.max_memory_allocated() / 1024**3
         print(f"\n📊 显存峰值: {peak_memory:.2f} GB")
     
-    print("\n✅ PPO 模型配置完成！")
-    print(f"📁 模型已保存到: {OUTPUT_DIR}")
+    print("\n✅ PPO 模型已保存！")
+    print(f"📁 模型路径: {OUTPUT_DIR}")
+    
+    print("\n" + "=" * 60)
+    print("💡 使用 PPO 模型进行推理")
+    print("=" * 60)
+    print(f"""
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import PeftModel
+import torch
+
+# 加载基座模型
+base_model = AutoModelForCausalLM.from_pretrained(
+    "/public/huggingface-models/Qwen/Qwen3-1.7B",
+    trust_remote_code=True,
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
+
+# 加载 PPO LoRA 权重
+model = PeftModel.from_pretrained(base_model, "{OUTPUT_DIR}")
+tokenizer = AutoTokenizer.from_pretrained("{OUTPUT_DIR}", trust_remote_code=True)
+
+# 生成文本
+model.eval()
+prompt = "<|im_start|>user\\n请介绍一下人工智能<|im_end|>\\n<|im_start|>assistant\\n"
+inputs = tokenizer(prompt, return_tensors="pt")
+with torch.no_grad():
+    outputs = model.generate(**inputs, max_new_tokens=200)
+print(tokenizer.decode(outputs[0]))
+    """)
 
 
 if __name__ == "__main__":

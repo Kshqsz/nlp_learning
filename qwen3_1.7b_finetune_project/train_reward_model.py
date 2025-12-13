@@ -28,16 +28,19 @@ import json
 BASE_MODEL_PATH = "/root/data/hsk-models/qwen3_1.7b_lora_sft"  # SFT 后的模型
 ORIGINAL_MODEL_PATH = "/public/huggingface-models/Qwen/Qwen3-1.7B"
 
+# 数据路径（相对于脚本目录的上级）
+SFT_DATA_PATH = "../dataset_generation/chinese_sft_100m.jsonl"
+
 # 输出路径
 OUTPUT_DIR = "/root/data/hsk-models/qwen3_1.7b_reward_model"
 
 # 超参数
 MAX_LENGTH = 512
-BATCH_SIZE = 8
+BATCH_SIZE = 4
 GRADIENT_ACCUMULATION_STEPS = 4  # 有效 batch = 16
 LEARNING_RATE = 5e-5
-NUM_EPOCHS = 3
-NUM_SAMPLES = 10000  # 奖励模型数据量
+NUM_EPOCHS = 2
+NUM_SAMPLES = 5000  # 奖励模型数据量
 
 # LoRA 配置
 LORA_R = 16
@@ -50,63 +53,28 @@ TARGET_MODULES = [
 
 
 def load_reward_dataset():
-    """加载或创建奖励模型训练数据集"""
+    """加载奖励模型训练数据集"""
     print("\n📊 加载奖励模型训练数据...")
     
-    # 尝试加载本地数据
-    local_reward_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dpo_zh.jsonl")
+    # 获取脚本所在目录
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(script_dir, SFT_DATA_PATH)
     
-    if os.path.exists(local_reward_path):
-        print(f"   使用本地 SFT 数据: {local_reward_path}")
-        dataset = load_dataset("json", data_files=local_reward_path, split="train")
-        
-        # 将 SFT 数据转换为奖励模型格式
-        # 在这个简化版本中，我们假设高质量的 SFT 数据对应奖励 1，
-        # 需要另外准备反例数据对应奖励 0
+    # 规范化路径
+    data_path = os.path.normpath(data_path)
+    
+    if os.path.exists(data_path):
+        print(f"   ✅ 找到 SFT 数据: {data_path}")
+        dataset = load_dataset("json", data_files=data_path, split="train")
         
         if len(dataset) > NUM_SAMPLES:
             dataset = dataset.shuffle(seed=42).select(range(NUM_SAMPLES))
         
         print(f"   ✅ 加载 {len(dataset)} 条数据")
         return dataset
-    
-    # 如果没有本地数据，创建演示数据
-    print("   ⚠️ 未找到本地数据，创建演示数据...")
-    
-    # 演示数据格式：good response 和 bad response 对
-    demo_data = []
-    demo_examples = [
-        {
-            "question": "如何学习编程？",
-            "good_response": "学习编程需要：1) 学习基础语法和概念 2) 通过项目实践 3) 阅读优质代码 4) 持续刷题训练。建议从 Python 或 JavaScript 开始。",
-            "bad_response": "编程很难。",
-        },
-        {
-            "question": "Python 的优势是什么？",
-            "good_response": "Python 具有以下优势：1) 语法简洁易学 2) 库生态丰富 3) 应用广泛（Web、数据科学、AI 等）4) 社区活跃 5) 跨平台兼容。",
-            "bad_response": "Python 不错。",
-        },
-        {
-            "question": "怎样保持身体健康？",
-            "good_response": "保持健康需要：1) 规律运动（每周 3-5 次）2) 均衡饮食 3) 充足睡眠（7-9 小时）4) 压力管理 5) 定期体检。",
-            "bad_response": "多运动。",
-        },
-    ]
-    
-    # 扩展演示数据到所需数量
-    for _ in range(NUM_SAMPLES // len(demo_examples)):
-        demo_data.extend(demo_examples)
-    
-    # 创建数据集
-    from datasets import Dataset
-    dataset = Dataset.from_dict({
-        "question": [d["question"] for d in demo_data],
-        "good_response": [d["good_response"] for d in demo_data],
-        "bad_response": [d["bad_response"] for d in demo_data],
-    })
-    
-    print(f"   ✅ 创建演示数据集：{len(dataset)} 条")
-    return dataset
+    else:
+        print(f"   ❌ 错误：找不到数据文件: {data_path}")
+        raise FileNotFoundError(f"数据文件不存在: {data_path}")
 
 
 def preprocess_reward_data(examples, tokenizer):
@@ -202,39 +170,6 @@ def preprocess_reward_data(examples, tokenizer):
         "attention_mask": attention_mask_list,
         "labels": labels_list,
     }
-
-
-def create_reward_model(model_path, tokenizer):
-    """创建奖励模型"""
-    print("📦 创建奖励模型...")
-    
-    # 从 causal LM 加载基础模型
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        trust_remote_code=True,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
-    
-    # 添加 value head（用于评分）
-    # 简单方法：使用最后一个 token 的 hidden state 来预测分数
-    hidden_size = model.config.hidden_size
-    
-    # 创建一个简单的线性层作为 reward head
-    class RewardHead(torch.nn.Module):
-        def __init__(self, hidden_size):
-            super().__init__()
-            self.linear = torch.nn.Linear(hidden_size, 1)
-        
-        def forward(self, hidden_states):
-            # 使用最后一个 token 的 hidden state
-            last_hidden_state = hidden_states[:, -1, :]
-            return self.linear(last_hidden_state)
-    
-    # 添加 reward head
-    model.reward_head = RewardHead(hidden_size).to(model.device)
-    
-    return model
 
 
 def main():
